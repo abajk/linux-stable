@@ -35,6 +35,7 @@
  * Note: writeable partitions require their size and offset be
  * erasesize aligned (e.g. use MTDPART_OFS_NEXTBLK).
  */
+struct mtd_info;
 
 struct mtd_partition {
 	char *name;			/* identifier string */
@@ -50,7 +51,6 @@ struct mtd_partition {
 #define MTDPART_SIZ_FULL	(0)
 
 
-struct mtd_info;
 struct device_node;
 
 /**
@@ -84,5 +84,7 @@ int mtd_add_partition(struct mtd_info *master, char *name,
 		      long long offset, long long length);
 int mtd_del_partition(struct mtd_info *master, int partno);
 uint64_t mtd_get_device_size(const struct mtd_info *mtd);
+extern void __weak arch_split_mtd_part(struct mtd_info *master,
+				       const char *name, int offset, int size);
 
 #endif
