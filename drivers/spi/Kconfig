@@ -385,6 +385,74 @@ config SPI_SC18IS602
 	help
 	  SPI driver for NXP SC18IS602/602B/603 I2C to SPI bridge.
 
+config LANTIQ_SPI
+	tristate "Lantiq SPI/SSC driver"
+	depends on SPI_MASTER
+	default n
+
+config LANTIQ_SPI_DEBUG
+    bool "Lantiq SPI/SSC runtime debug support"
+    depends on LANTIQ_SPI
+    default n
+    ----help---
+    Choose this option to enable Lantiq SPI/SSC runtime debug options.
+    This can be enabled by writing debug options into
+    /proc/sys/dev/ltq_ssc/debug.
+
+config LANTIQ_SPI_ASYNCHRONOUS
+	bool "Lantiq SPI/SSC tasklet support"
+	depends on LANTIQ_SPI
+	default y
+	---help---
+	Choose this option to support synchronous and asynchronous APIs
+	at the same time. SPI itself will run in tasklet. If not,
+	only synchronous API is supported. SPI context will in kernel
+	thread mode and belong to caller's context.
+
+config LANTIQ_SPI_FLASH
+	tristate "Lantiq SPI/SSC 25 types of serial flash driver"
+	depends on LANTIQ_SPI
+	default n
+
+config LANTIQ_USIF_SPI
+	tristate "Lantiq USIF SPI driver"
+	depends on SPI_MASTER && (SOC_XWAY)
+	default n
+
+config LANTIQ_USIF_SPI_DEBUG
+    bool "Lantiq USIF SPI runtime debug support"
+    depends on LANTIQ_USIF_SPI
+    default n
+    ----help---
+    Choose this option to enable USIF SPI runtime debug options. This can be enabled by writing debug options into /proc/sys/dev/ifx_usif_spi/debug.
+
+config LANTIQ_USIF_SPI_ASYNCHRONOUS
+    bool "Lantiq USIF SPI tasklet support"
+    depends on LANTIQ_USIF_SPI
+    default y
+    ---help---
+    Choose this option to support synchronous and asynchronous APIs at the same time. USIF SPI itself will run in tasklet. If not, only synchronous API is supported. SPI context will in kernel thread mode and belong to caller's context.
+
+config USIF_SPI_XRX200
+	bool "Lantiq USIF support for XRX200 family of SoCs"
+	depends on LANTIQ_USIF_SPI
+	default n
+
+config USIF_SPI_XRX300
+	bool "Lantiq USIF support for XRX300 family of SoCs"
+	depends on LANTIQ_USIF_SPI
+	default n
+
+config LANTIQ_USIF_SPI_FLASH
+	tristate "Lantiq USIF SPI 25 types of serial flash driver"
+	depends on LANTIQ_USIF_SPI
+	default n
+	
+config LANTIQ_USIF_AT45_FLASH
+    tristate "Lantiq atmel45xxx flash driver"
+    depends on LANTIQ_USIF_SPI
+    default n
+
 config SPI_SH_MSIOF
 	tristate "SuperH MSIOF SPI controller"
 	depends on (SUPERH || ARCH_SHMOBILE) && HAVE_CLK
@@ -495,6 +563,14 @@ config SPI_NUC900
 	select SPI_BITBANG
 	help
 	  SPI driver for Nuvoton NUC900 series ARM SoCs
+
+config SPI_XWAY
+	tristate "Lantiq SPI controller"
+	depends on LANTIQ && (SOC_TYPE_XWAY || SOC_FALCON)
+	select SPI_BITBANG
+	help
+	  This driver supports the Lantiq SoC SPI controller in master
+	  mode.
 
 #
 # Add new SPI master controllers in alphabetical order above this line

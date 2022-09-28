@@ -52,3 +52,58 @@ obj-$(CONFIG_USB_FSL_MPH_DR_OF)	+= fsl-mph-dr-of.o
 obj-$(CONFIG_USB_OCTEON2_COMMON) += octeon2-common.o
 obj-$(CONFIG_USB_HCD_BCMA)	+= bcma-hcd.o
 obj-$(CONFIG_USB_HCD_SSB)	+= ssb-hcd.o
+
+
+	ltqusb_host-objs    := ltqusb_driver.o
+	ltqusb_host-objs    += ltqusb_ctl.o
+	ltqusb_host-objs    += ltqusb_cif_h.o
+	ltqusb_host-objs    += ltqhcd.o
+	ltqusb_host-objs    += ltqhcd_es.o
+	ltqusb_host-objs    += ltqhcd_intr.o
+	ltqusb_host-objs    += ltqhcd_queue.o
+
+
+	EXTRA_CFLAGS  += -Dlinux -D__LINUX__
+	EXTRA_CFLAGS  += -D__KERNEL__
+	EXTRA_CFLAGS  += -D__DEBUG__
+	EXTRA_CFLAGS  += -D__ENABLE_DUMP__
+
+ifeq ($(CONFIG_USB_HOST_LTQ_FORCE_USB11),y)
+	EXTRA_CFLAGS  += -D__FORCE_USB11__
+endif
+ifeq ($(CONFIG_USB_HOST_LTQ_WITH_HS_ELECT_TST),y)
+	EXTRA_CFLAGS  += -D__WITH_HS_ELECT_TST__
+endif
+ifeq ($(CONFIG_USB_HOST_LTQ_WITH_ISO),y)
+	EXTRA_CFLAGS  += -D__EN_ISOC__
+endif
+ifeq ($(CONFIG_USB_HOST_LTQ_UNALIGNED_ADJ),y)
+	EXTRA_CFLAGS  += -D__UNALIGNED_BUF_ADJ__
+#	EXTRA_CFLAGS  += -D__UNALIGNED_BUF_BURST__
+endif
+ifeq ($(CONFIG_USB_HOST_LTQ_UNALIGNED_CHK),y)
+	EXTRA_CFLAGS  += -D__UNALIGNED_BUF_CHK__
+#	EXTRA_CFLAGS  += -D__UNALIGNED_BUF_BURST__
+endif
+ifeq ($(CONFIG_USB_HOST_LTQ_COC),y)
+#	EXTRA_CFLAGS  += -D__HOST_COC__
+endif
+
+	EXTRA_CFLAGS  += -D__NEW_COC__
+
+	EXTRA_CFLAGS  += -D__DYN_SOF_INTR__
+#	EXTRA_CFLAGS  += -D__EN_ISOC__
+#	EXTRA_CFLAGS  += -D__EN_ISOC_SPLIT__
+#	EXTRA_CFLAGS  += -D__EPQD_DESTROY_TIMEOUT__
+
+	EXTRA_CFLAGS  += -D__PHY_LONG_PREEMP__
+
+	EXTRA_CFLAGS  += -D__INTRNAKRETRY__
+	EXTRA_CFLAGS  += -D__INTRINCRETRY__
+
+	EXTRA_CFLAGS  += -D__BURST_XFER__
+#	EXTRA_CFLAGS  += -D__SINGLE_XACT__
+
+obj-$(CONFIG_USB_HOST_LTQ)	+= ltqusb_host.o
+
+

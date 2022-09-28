@@ -240,6 +240,7 @@ depends on MIPS
 
 config LOONGSON2_CPUFREQ
 	tristate "Loongson2 CPUFreq Driver"
+	depends on MIPS_EXTERNAL_TIMER
 	select CPU_FREQ_TABLE
 	help
 	  This option adds a CPUFreq driver for loongson processors which
@@ -251,6 +252,33 @@ config LOONGSON2_CPUFREQ
 
 	  If in doubt, say N.
 
+config LTQ_CPUFREQ
+	tristate "Lantiq SoC CPUFreq Driver"
+	help
+	  This option adds a CPUFreq driver for Lantiq SoC's which
+	  support software configurable cpu frequency scaling.
+
+	  If in doubt, say N.
+
+config LTQ_CPUFREQ_DEBUG
+	tristate "Enable debug messages for Lantiq Frequency Driver"
+	depends on LTQ_CPUFREQ
+	default n
+	help
+	  This option enables debug ability to the CPUFreq driver for
+	  Lantiq SoC's. Further message control can be done via sysfs:
+	  /sys/module/ltq_cpufreq/parameters/ltq_cpufreq_debug
+	  add 1 for INFO, 2 for FUNCtrace, and 4 for DEBUG.
+	  Combination is valid, e.g. add 7 to enable all three."
+
+config LTQ_CPU_FREQ
+	tristate "Enable the sub system support for frequency scaling"
+	depends on LTQ_CPUFREQ
+	default y
+	help
+	  This option enables the lantiq xway sub system support for
+		frequency scaling (register to cpufreq, get notification).
+		Necessary because of clock dependencies.
 endmenu
 
 menu "PowerPC CPU frequency scaling drivers"

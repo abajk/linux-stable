@@ -1245,6 +1245,17 @@ ppp_send_frame(struct ppp *ppp, struct sk_buff *skb)
 		/* peek at outbound CCP frames */
 		ppp_ccp_peek(ppp, skb, 0);
 		break;
+#ifdef CONFIG_LANTIQ_IPQOS
+//LCP prioritization hack	
+	case PPP_LCP:
+	case PPP_IPCP:
+	case PPP_PAP:
+	case PPP_CHAP:
+		/* MARK LCP frames with highest priority */
+		/* hack for QOS: if QOS is enabled, give highest priority to LCP control packets */
+		skb->priority = 7;
+		break;
+#endif
 	}
 
 	/* try to do packet compression */
@@ -1582,6 +1593,7 @@ ppp_channel_push(struct channel *pch)
 	if (pch->chan) {
 		while (!skb_queue_empty(&pch->file.xq)) {
 			skb = skb_dequeue(&pch->file.xq);
+			skb->priority = 7; /* For LCP Prioritization */
 			if (!pch->chan->ops->start_xmit(pch->chan, skb)) {
 				/* put the packet back and try again later */
 				skb_queue_head(&pch->file.xq, skb);
@@ -1789,6 +1801,17 @@ ppp_receive_nonmp_frame(struct ppp *ppp, struct sk_buff *skb)
 	case PPP_CCP:
 		ppp_ccp_peek(ppp, skb, 1);
 		break;
+#ifdef CONFIG_LANTIQ_IPQOS
+// LCP prioritization hack	
+	case PPP_LCP:
+	case PPP_IPCP:
+	case PPP_PAP:
+	case PPP_CHAP:
+		/* MARK LCP frames with highest priority */
+		/* hack for QOS: if QOS is enabled, give highest priority to LCP control packets */
+		skb->priority = 7;
+		break;
+#endif
 	}
 
 	++ppp->stats64.rx_packets;
@@ -2982,6 +3005,92 @@ static void *unit_find(struct idr *p, int n)
 	return idr_find(p, n);
 }
 
+#if (defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE))
+
+#if (defined(CONFIG_PPPOE) || defined(CONFIG_PPPOE_MODULE))
+extern int32_t ppa_get_pppoe_info(struct net_device *dev, void *po, uint32_t pppoe_id, void *value);
+#endif
+#if (defined(CONFIG_PPPOATM) || defined(CONFIG_PPPOATM_MODULE))
+struct pppoatm_vcc;
+extern int32_t ppa_get_pppoa_info(struct net_device *dev, void *pvcc, uint32_t pppoa_id, void *value);
+#endif
+
+/*it's very unlikely we need lock_kernel here to prevent the device being destroyed*/
+int32_t ppa_ppp_get_info(struct net_device *ppp_dev, uint32_t ppp_info_id, void *value)
+{
+	struct ppp *ppp;
+	struct channel *pch;
+	struct list_head *list;
+	int32_t ret = -EFAULT;
+    struct ppp_net *pn;
+	
+	if(unlikely(!ppp_dev || !value)){
+		printk("PPP arg error\n");
+		return ret;
+	}
+
+    ppp = netdev_priv(ppp_dev);
+
+	if (unlikely(!(ppp_dev->flags & IFF_POINTOPOINT) || !ppp)){
+		printk("PPP device in abnormal status!\n");
+		return ret;
+	}
+
+	/*check ppp validity */
+
+	ppp_lock(ppp);
+	if(unlikely(ppp->file.dead || atomic_read(&ppp->file.refcnt) == 0 || !ppp->dev || ppp->n_channels == 0)){
+		printk("PPP device is dead, being destroyed!\n");
+		goto err_unlockppp;
+	}
+
+	/*don't support multipul link*/
+	if(unlikely(ppp->flags & SC_MULTILINK)){
+		printk("Don't support multiple link\n");
+		goto err_unlockppp;
+	}
+
+	list = &ppp->channels;
+	if(unlikely(list_empty(list))){
+		printk("PPP channel list empty!\n");
+		goto err_unlockppp;
+	}
+
+	list = list->next;
+	pch = list_entry(list, struct channel, clist);
+
+	if(unlikely(!pch->chan)){
+		printk("PPP cannot get channel!\n");
+		goto err_unlockppp;
+	}
+
+    pn = ppp_pernet(pch->chan_net);
+
+	spin_lock_bh(&pn->all_channels_lock); /* we only need to guarantee the channel won't be destroyed, release ppp's lock to increase speed */
+	ppp_unlock(ppp);
+	
+	if((ppp_info_id & PPA_PPP_MASK) == PPA_PPPOE_ID){
+#if (defined(CONFIG_PPPOE) || defined(CONFIG_PPPOE_MODULE))
+		ret = ppa_get_pppoe_info(ppp_dev, pch->chan->private, ppp_info_id >>PPA_PPP_MASK_LEN, value);
+#endif
+	}else{
+#if (defined(CONFIG_PPPOATM) || defined(CONFIG_PPPOATM_MODULE))
+		ret = ppa_get_pppoa_info(ppp_dev, pch->chan->private, ppp_info_id >>PPA_PPP_MASK_LEN, value);
+#endif
+	}
+	spin_unlock_bh(&pn->all_channels_lock);
+
+	return ret;
+
+
+err_unlockppp:
+	ppp_unlock(ppp);
+
+	return ret;
+}
+EXPORT_SYMBOL(ppa_ppp_get_info);
+
+#endif
 /* Module/initialization stuff */
 
 module_init(ppp_init);

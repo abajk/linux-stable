@@ -155,6 +155,7 @@ extern int clockevents_program_event(struct clock_event_device *dev,
 				     ktime_t expires, bool force);
 
 extern void clockevents_handle_noop(struct clock_event_device *dev);
+extern struct clock_event_device* clockevents_get(char* name);
 
 static inline void
 clockevents_calc_mult_shift(struct clock_event_device *ce, u32 freq, u32 minsec)

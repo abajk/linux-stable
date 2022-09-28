@@ -98,6 +98,10 @@ struct nf_conn {
 #ifdef CONFIG_NF_CONNTRACK_SECMARK
 	u_int32_t secmark;
 #endif
+#ifdef CONFIG_NF_CONNTRACK_EXTMARK
+	u_int32_t extmark;
+#endif
+
 
 	/* Extensions */
 	struct nf_ct_ext *ext;
@@ -307,6 +311,11 @@ extern unsigned int nf_conntrack_htable_size;
 extern unsigned int nf_conntrack_max;
 extern unsigned int nf_conntrack_hash_rnd;
 void init_nf_conntrack_hash_rnd(void);
+
+#if defined(CONFIG_LTQ_PPA_API_SW_FASTPATH)
+int get_conntrack_from_skb(struct sk_buff *skb, struct nf_conn **nfct, u_int8_t *set_reply);
+#endif
+
 
 #define NF_CT_STAT_INC(net, count)	  __this_cpu_inc((net)->ct.stat->count)
 #define NF_CT_STAT_INC_ATOMIC(net, count) this_cpu_inc((net)->ct.stat->count)

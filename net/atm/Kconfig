@@ -71,3 +71,10 @@ config ATM_BR2684_IPFILTER
 	  This is an experimental mechanism for users who need to terminate a
 	  large number of IP-only vcc's.  Do not enable this unless you are sure
 	  you know what you are doing.
+
+config LTQ_OAM
+        tristate "LTQ OAM support"
+        depends on ATM && NET
+        default y
+        ---help---
+        LTQ OAM support

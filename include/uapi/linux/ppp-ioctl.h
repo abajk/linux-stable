@@ -116,4 +116,11 @@ struct pppol2tp_ioc_stats {
 #define SIOCGPPPVER     (SIOCDEVPRIVATE + 1)	/* NEVER change this!! */
 #define SIOCGPPPCSTATS  (SIOCDEVPRIVATE + 2)
 
+#if (defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE))
+#define PPA_PPP_MASK_LEN   2
+#define PPA_PPP_MASK    3
+#define PPA_PPPOE_ID       0x00000001
+#define PPA_PPPOA_ID    0x00000002
+#endif
+
 #endif /* _PPP_IOCTL_H */

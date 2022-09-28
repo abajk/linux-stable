@@ -786,6 +786,17 @@ void clocksource_unregister(struct clocksource *cs)
 }
 EXPORT_SYMBOL(clocksource_unregister);
 
+/**
+ * clocksource_get_current - return the pointer to the current clocksource
+ * 
+ */
+struct clocksource * clocksource_get_current(void)
+{
+	return curr_clocksource;
+}
+EXPORT_SYMBOL(clocksource_get_current);
+
+
 #ifdef CONFIG_SYSFS
 /**
  * sysfs_show_current_clocksources - sysfs interface for current clocksource

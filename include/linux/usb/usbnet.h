@@ -75,6 +75,9 @@ struct usbnet {
 #		define EVENT_NO_RUNTIME_PM	9
 #		define EVENT_RX_KILL	10
 #		define EVENT_LINK_CHANGE	11
+#		define EVENT_REREG_PPA 12
+	int usbnet_ppadp_on;
+	int usbnet_ppadp_ifid;
 };
 
 static inline struct usb_driver *driver_of(struct usb_interface *intf)

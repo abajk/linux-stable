@@ -56,6 +56,11 @@
 #include <net/checksum.h>
 #include <linux/mroute6.h>
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+  #include <net/ppa_api.h>
+#endif
+
+
 int __ip6_local_out(struct sk_buff *skb)
 {
 	int len;
@@ -92,6 +97,9 @@ static int ip6_finish_output2(struct sk_buff *skb)
 	skb->protocol = htons(ETH_P_IPV6);
 	skb->dev = dev;
 
+#ifdef CONFIG_LANTIQ_IPQOS_MARK_SKBPRIO
+	skb_mark_priority(skb);
+#endif
 	if (ipv6_addr_is_multicast(&ipv6_hdr(skb)->daddr)) {
 		struct inet6_dev *idev = ip6_dst_idev(skb_dst(skb));
 
@@ -128,6 +136,40 @@ static int ip6_finish_output2(struct sk_buff *skb)
 			return 0;
 		}
 	}
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+	if ( ppa_hook_session_add_fn != NULL )
+	{
+#if defined(CONFIG_LANTIQ_IPQOS_CLASS_ACCELERATION_DISABLE)
+		/* check for 13th bit in NFMARK set by IPQOS classifier */
+		/* If this bit is set, dont call PPA session add fn*/
+		bool accel_st;
+#ifdef CONFIG_NETWORK_EXTMARK
+   GET_DATA_FROM_MARK_OPT(skb->extmark, ACCELSEL_MASK, ACCELSEL_START_BIT_POS, accel_st);
+#endif
+		if (accel_st == 0) {
+#endif
+
+	#ifdef CONFIG_NF_CONNTRACK
+		struct nf_conn *ct;
+	#else
+		struct ip_conntrack *ct;
+	#endif
+		enum ip_conntrack_info ctinfo;
+		uint32_t flags;
+	#ifdef CONFIG_NF_CONNTRACK
+		ct = nf_ct_get(skb, &ctinfo);
+	#else
+		ct = ip_conntrack_get(skb, &ctinfo);
+	#endif
+		flags = 0; //  post routing
+		flags |= CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL ? PPA_F_SESSION_ORG_DIR : PPA_F_SESSION_REPLY_DIR;  
+		ppa_hook_session_add_fn(skb, ct, flags);
+#if defined(CONFIG_LANTIQ_IPQOS_CLASS_ACCELERATION_DISABLE)
+	    }
+#endif
+	}
+#endif
 
 	rcu_read_lock_bh();
 	nexthop = rt6_nexthop((struct rt6_info *)dst, &ipv6_hdr(skb)->daddr);

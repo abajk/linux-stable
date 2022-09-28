@@ -121,6 +121,16 @@ ebt_dev_check(const char *entry, const struct net_device *device)
 	return (devname[i] != entry[i] && entry[i] != 1);
 }
 
+static inline unsigned compare_ether_addr_with_mask(const u8 *addr1, const u8 *addr2, const u8 *mask)
+{
+        const u16 *a = (const u16 *) addr1;
+        const u16 *b = (const u16 *) addr2;
+        const u16 *c = (const u16 *) mask;
+	
+        BUILD_BUG_ON(ETH_ALEN != 6);
+        return (((a[0] ^ b[0]) & mask[0]) | ((a[1] ^ b[1]) & mask[1]) | ((a[2] ^ b[2]) & mask[2])) != 0;
+}
+
 #define FWINV2(bool,invflg) ((bool) ^ !!(e->invflags & invflg))
 /* process standard matches */
 static inline int
@@ -157,18 +167,12 @@ ebt_basic_match(const struct ebt_entry *e, const struct sk_buff *skb,
 		return 1;
 
 	if (e->bitmask & EBT_SOURCEMAC) {
-		verdict = 0;
-		for (i = 0; i < 6; i++)
-			verdict |= (h->h_source[i] ^ e->sourcemac[i]) &
-			   e->sourcemsk[i];
+		verdict = compare_ether_addr_with_mask(h->h_source,e->sourcemac,e->sourcemsk);
 		if (FWINV2(verdict != 0, EBT_ISOURCE) )
 			return 1;
 	}
 	if (e->bitmask & EBT_DESTMAC) {
-		verdict = 0;
-		for (i = 0; i < 6; i++)
-			verdict |= (h->h_dest[i] ^ e->destmac[i]) &
-			   e->destmsk[i];
+		verdict = compare_ether_addr_with_mask(h->h_dest,e->destmac,e->destmsk);
 		if (FWINV2(verdict != 0, EBT_IDEST) )
 			return 1;
 	}
@@ -182,7 +186,7 @@ struct ebt_entry *ebt_next_entry(const struct ebt_entry *entry)
 }
 
 /* Do some firewalling */
-unsigned int ebt_do_table (unsigned int hook, struct sk_buff *skb,
+unsigned int __ebt_optimized ebt_do_table (unsigned int hook, struct sk_buff *skb,
    const struct net_device *in, const struct net_device *out,
    struct ebt_table *table)
 {
@@ -2407,13 +2411,17 @@ static int __init ebtables_init(void)
 	}
 
 	printk(KERN_INFO "Ebtables v2.0 registered\n");
+#ifdef CONFIG_BRIDGE_NETFILTER
 	brnf_call_ebtables = 1;
+#endif
 	return 0;
 }
 
 static void __exit ebtables_fini(void)
 {
+#ifdef CONFIG_BRIDGE_NETFILTER
 	brnf_call_ebtables = 0;
+#endif
 	nf_unregister_sockopt(&ebt_sockopts);
 	xt_unregister_target(&ebt_standard_target);
 	printk(KERN_INFO "Ebtables v2.0 unregistered\n");

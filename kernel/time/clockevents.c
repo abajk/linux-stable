@@ -462,4 +462,25 @@ void clockevents_notify(unsigned long reason, void *arg)
 	raw_spin_unlock_irqrestore(&clockevents_lock, flags);
 }
 EXPORT_SYMBOL_GPL(clockevents_notify);
+
+/**
+ * clockevents_get - return the pointer to the given clockevent
+ * @name:   name of the clockenvent I'm looking for
+ */
+struct clock_event_device* clockevents_get(char* name)
+{
+   struct clock_event_device* cur_list_pos;
+
+   /* search for the given clockevent name */
+   list_for_each_entry(cur_list_pos, &clockevent_devices,list) {
+      if (0 == strcmp(cur_list_pos->name,name)){
+         /* clocksource found */
+         return cur_list_pos;
+      }
+   }
+   return NULL;
+}
+EXPORT_SYMBOL(clockevents_get);
+
+
 #endif

@@ -7,6 +7,7 @@
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/seq_file.h>
+#include <linux/cpufreq.h>
 #include <asm/bootinfo.h>
 #include <asm/cpu.h>
 #include <asm/cpu-features.h>
@@ -25,6 +26,7 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 	char fmt [64];
 	int i;
 
+
 #ifdef CONFIG_SMP
 	if (!cpu_online(n))
 		return 0;
@@ -39,13 +41,22 @@ static int show_cpuinfo(struct seq_file *m, void *v)
 			seq_printf(m, "machine\t\t\t: %s\n",
 				   mips_get_machine_name());
 	}
-
 	seq_printf(m, "processor\t\t: %ld\n", n);
 	sprintf(fmt, "cpu model\t\t: %%s V%%d.%%d%s\n",
 		      cpu_data[n].options & MIPS_CPU_FPU ? "  FPU V%d.%d" : "");
 	seq_printf(m, fmt, __cpu_name[n],
 		      (version >> 4) & 0x0f, version & 0x0f,
 		      (fp_vers >> 4) & 0x0f, fp_vers & 0x0f);
+	#ifdef CONFIG_CPU_FREQ
+	{
+		unsigned int freq = cpufreq_quick_get(n);
+
+		if (freq > 0){
+			seq_printf(m, "cpu MHz\t\t\t: %u.%03u\n",
+				   freq / 1000, (freq % 1000));
+		}
+	}
+	#endif
 	seq_printf(m, "BogoMIPS\t\t: %u.%02u\n",
 		      cpu_data[n].udelay_val / (500000/HZ),
 		      (cpu_data[n].udelay_val / (5000/HZ)) % 100);

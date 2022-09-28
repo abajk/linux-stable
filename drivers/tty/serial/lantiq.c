@@ -18,6 +18,7 @@
  * Copyright (C) 2007 Felix Fietkau <nbd@openwrt.org>
  * Copyright (C) 2007 John Crispin <blogic@openwrt.org>
  * Copyright (C) 2010 Thomas Langer, <thomas.langer@lantiq.com>
+ * Copyright (C) 2013 Xiaogang Huang <xiaogang.huang@lantiq.com>
  */
 
 #include <linux/slab.h>
@@ -37,8 +38,16 @@
 #include <linux/io.h>
 #include <linux/clk.h>
 #include <linux/gpio.h>
-
+#include <linux/pinctrl/consumer.h>
+#include <linux/err.h>
+#include <linux/delay.h>
 #include <lantiq_soc.h>
+
+#ifdef CONFIG_LTQ_CPU_FREQ
+#include <linux/cpufreq.h>
+#include <cpufreq/ltq_cpufreq.h>
+static enum ltq_cpufreq_state lqasc_pwm_state = LTQ_CPUFREQ_PS_D0;
+#endif
 
 #define PORT_LTQ_ASC		111
 #define MAXPORTS		2
@@ -110,8 +119,9 @@
 #define ASCFSTAT_TXFREEMASK	0x3F000000
 #define ASCFSTAT_TXFREEOFF	24
 
-static void lqasc_tx_chars(struct uart_port *port);
+static void lqasc_tx_chars(struct uart_port *port, const bool dummy);
 static struct ltq_uart_port *lqasc_port[MAXPORTS];
+static unsigned int lqasc_tx_block[MAXPORTS] = {0};
 static struct uart_driver lqasc_reg;
 static DEFINE_SPINLOCK(ltq_asc_lock);
 
@@ -125,6 +135,17 @@ struct ltq_uart_port {
 	unsigned int		rx_irq;
 	unsigned int		err_irq;
 };
+
+int lqasc_tty_block_tx(const unsigned int line, const unsigned int block)
+{
+	if (line >= MAXPORTS)
+		return -1;
+
+	lqasc_tx_block[line] = block;
+
+	return 0;
+}
+EXPORT_SYMBOL(lqasc_tty_block_tx);
 
 static inline struct
 ltq_uart_port *to_ltq_uart_port(struct uart_port *port)
@@ -143,7 +164,7 @@ lqasc_start_tx(struct uart_port *port)
 {
 	unsigned long flags;
 	spin_lock_irqsave(&ltq_asc_lock, flags);
-	lqasc_tx_chars(port);
+	lqasc_tx_chars(port, lqasc_tx_block[port->line] ? true : false);
 	spin_unlock_irqrestore(&ltq_asc_lock, flags);
 	return;
 }
@@ -221,7 +242,7 @@ lqasc_rx_chars(struct uart_port *port)
 }
 
 static void
-lqasc_tx_chars(struct uart_port *port)
+lqasc_tx_chars(struct uart_port *port, const bool dummy)
 {
 	struct circ_buf *xmit = &port->state->xmit;
 	if (uart_tx_stopped(port)) {
@@ -230,9 +251,12 @@ lqasc_tx_chars(struct uart_port *port)
 	}
 
 	while (((ltq_r32(port->membase + LTQ_ASC_FSTAT) &
-		ASCFSTAT_TXFREEMASK) >> ASCFSTAT_TXFREEOFF) != 0) {
+		ASCFSTAT_TXFREEMASK) >> ASCFSTAT_TXFREEOFF) != 0 || dummy) {
 		if (port->x_char) {
-			ltq_w8(port->x_char, port->membase + LTQ_ASC_TBUF);
+			if (!dummy)
+				ltq_w8(port->x_char,
+				       port->membase + LTQ_ASC_TBUF);
+
 			port->icount.tx++;
 			port->x_char = 0;
 			continue;
@@ -241,8 +265,9 @@ lqasc_tx_chars(struct uart_port *port)
 		if (uart_circ_empty(xmit))
 			break;
 
-		ltq_w8(port->state->xmit.buf[port->state->xmit.tail],
-			port->membase + LTQ_ASC_TBUF);
+		if (!dummy)
+			ltq_w8(port->state->xmit.buf[port->state->xmit.tail],
+			       port->membase + LTQ_ASC_TBUF);
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 		port->icount.tx++;
 	}
@@ -318,7 +343,7 @@ lqasc_startup(struct uart_port *port)
 	struct ltq_uart_port *ltq_port = to_ltq_uart_port(port);
 	int retval;
 
-	if (ltq_port->clk)
+	if (!IS_ERR(ltq_port->clk))
 		clk_enable(ltq_port->clk);
 	port->uartclk = clk_get_rate(ltq_port->fpiclk);
 
@@ -386,7 +411,7 @@ lqasc_shutdown(struct uart_port *port)
 		port->membase + LTQ_ASC_RXFCON);
 	ltq_w32_mask(ASCTXFCON_TXFEN, ASCTXFCON_TXFFLU,
 		port->membase + LTQ_ASC_TXFCON);
-	if (ltq_port->clk)
+	if (!IS_ERR(ltq_port->clk))
 		clk_disable(ltq_port->clk);
 }
 
@@ -580,6 +605,8 @@ static struct uart_ops lqasc_pops = {
 	.verify_port =	lqasc_verify_port,
 };
 
+#ifdef CONFIG_SERIAL_LANTIQ_CONSOLE
+
 static void
 lqasc_console_putchar(struct uart_port *port, int ch)
 {
@@ -595,18 +622,16 @@ lqasc_console_putchar(struct uart_port *port, int ch)
 	ltq_w8(ch, port->membase + LTQ_ASC_TBUF);
 }
 
-
-static void
-lqasc_console_write(struct console *co, const char *s, u_int count)
+void lqasc_console_puts(const short index, const char *s, u_int count)
 {
 	struct ltq_uart_port *ltq_port;
 	struct uart_port *port;
 	unsigned long flags;
 
-	if (co->index >= MAXPORTS)
+	if (index >= MAXPORTS)
 		return;
 
-	ltq_port = lqasc_port[co->index];
+	ltq_port = lqasc_port[index];
 	if (!ltq_port)
 		return;
 
@@ -615,6 +640,13 @@ lqasc_console_write(struct console *co, const char *s, u_int count)
 	spin_lock_irqsave(&ltq_asc_lock, flags);
 	uart_console_write(port, s, count, lqasc_console_putchar);
 	spin_unlock_irqrestore(&ltq_asc_lock, flags);
+}
+EXPORT_SYMBOL(lqasc_console_puts);
+
+static void
+lqasc_console_write(struct console *co, const char *s, u_int count)
+{
+	lqasc_console_puts(co->index, s, count);
 }
 
 static int __init
@@ -635,6 +667,9 @@ lqasc_console_setup(struct console *co, char *options)
 		return -ENODEV;
 
 	port = &ltq_port->port;
+
+	if (!IS_ERR(ltq_port->clk))
+		clk_enable(ltq_port->clk);
 
 	port->uartclk = clk_get_rate(ltq_port->fpiclk);
 
@@ -661,6 +696,11 @@ lqasc_console_init(void)
 }
 console_initcall(lqasc_console_init);
 
+#define LANTIQ_SERIAL_CONSOLE &lqasc_console
+#else
+#define LANTIQ_SERIAL_CONSOLE NULL
+#endif /* CONFIG_SERIAL_LANTIQ_CONSOLE */
+
 static struct uart_driver lqasc_reg = {
 	.owner =	THIS_MODULE,
 	.driver_name =	DRVNAME,
@@ -668,8 +708,114 @@ static struct uart_driver lqasc_reg = {
 	.major =	0,
 	.minor =	0,
 	.nr =		MAXPORTS,
-	.cons =		&lqasc_console,
+	.cons =		LANTIQ_SERIAL_CONSOLE,
 };
+
+#ifdef CONFIG_LTQ_CPU_FREQ
+/* Linux CPUFREQ support start */
+int lqasc_cpufreq_prechange(enum ltq_cpufreq_module module,
+                                                        enum ltq_cpufreq_state newState,
+                                                        enum ltq_cpufreq_state oldState)
+{
+        struct ltq_uart_port *ltq_port;
+        struct uart_port *port;
+
+        ltq_port = lqasc_port[0];
+        port = &ltq_port->port;
+	console_stop(port->cons);
+        return 0;
+}
+
+int lqasc_cpufreq_postchange(enum ltq_cpufreq_module module,
+                                                        enum ltq_cpufreq_state newState,
+                                                        enum ltq_cpufreq_state oldState)
+{
+        struct ltq_uart_port *ltq_port;
+        struct uart_port *port;
+        struct ktermios *termios;
+        struct tty_struct *tty;
+
+        ltq_port = lqasc_port[0];
+        port = &ltq_port->port;
+        port->uartclk = clk_get_rate(ltq_port->fpiclk);
+
+        if (port->state == NULL)
+        goto exit;
+
+        tty = port->state->port.tty;
+        if (tty == NULL)
+                goto exit;
+
+        termios = &tty->termios;
+        if (termios == NULL) {
+                dev_warn(port->dev, "%s: no termios?\n", __func__);
+                goto exit;
+        }
+
+        lqasc_set_termios(port, termios, NULL);
+
+exit:
+        console_start(port->cons);
+	lqasc_pwm_state = newState;
+        return 0;
+}
+
+/* keep track of frequency transitions */
+static int
+lqasc_cpufreq_notifier(struct notifier_block *nb, unsigned long val,
+                                                  void *data)
+{
+        struct cpufreq_freqs *freq = data;
+        enum ltq_cpufreq_state new_State,old_State;
+        int ret;
+
+        new_State = ltq_cpufreq_get_ps_from_khz(freq->new);
+        if(new_State == LTQ_CPUFREQ_PS_UNDEF) {
+                return NOTIFY_STOP_MASK | (LTQ_CPUFREQ_MODULE_UART<<4);
+        }
+        old_State = ltq_cpufreq_get_ps_from_khz(freq->old);
+        if(old_State == LTQ_CPUFREQ_PS_UNDEF) {
+                return NOTIFY_STOP_MASK | (LTQ_CPUFREQ_MODULE_UART<<4);
+        }
+        if (val == CPUFREQ_PRECHANGE){
+                ret = lqasc_cpufreq_prechange(LTQ_CPUFREQ_MODULE_UART, new_State,
+                                                                          old_State);
+                if (ret < 0) {
+                        return NOTIFY_STOP_MASK | (LTQ_CPUFREQ_MODULE_UART<<4);
+                }
+        } else if (val == CPUFREQ_POSTCHANGE){
+                ret = lqasc_cpufreq_postchange(LTQ_CPUFREQ_MODULE_UART, new_State,
+                                                                           old_State);
+                if (ret < 0) {
+                        return NOTIFY_STOP_MASK | (LTQ_CPUFREQ_MODULE_UART<<4);
+                }
+        }else{
+                return NOTIFY_OK | (LTQ_CPUFREQ_MODULE_UART<<4);
+        }
+        return NOTIFY_OK | (LTQ_CPUFREQ_MODULE_UART<<4);
+}
+
+static int lqasc_cpufreq_state_get(enum ltq_cpufreq_state *pmcuState)
+{
+    if( pmcuState )
+	*pmcuState = lqasc_pwm_state;
+
+    return 0;
+}
+
+static struct notifier_block lqasc_cpufreq_notifier_block = {
+        .notifier_call  = lqasc_cpufreq_notifier
+};
+
+struct ltq_cpufreq_module_info lqasc_cpufreq_module = {
+	.name							= "UART frequency scaling support",
+	.pmcuModule						= LTQ_CPUFREQ_MODULE_UART,
+	.pmcuModuleNr					= 0,
+	.powerFeatureStat				= 1,
+	.ltq_cpufreq_state_get			= lqasc_cpufreq_state_get,
+	.ltq_cpufreq_pwr_feature_switch	= NULL,
+};
+#endif /* CONFIG_LTQ_CPU_FREQ */
 
 static int __init
 lqasc_probe(struct platform_device *pdev)
@@ -678,6 +824,7 @@ lqasc_probe(struct platform_device *pdev)
 	struct ltq_uart_port *ltq_port;
 	struct uart_port *port;
 	struct resource *mmres, irqres[3];
+	struct pinctrl *pinctrl;
 	int line = 0;
 	int ret;
 
@@ -716,6 +863,10 @@ lqasc_probe(struct platform_device *pdev)
 	port->irq	= irqres[0].start;
 	port->mapbase	= mmres->start;
 
+	pinctrl = devm_pinctrl_get_select_default(&pdev->dev);
+	if (IS_ERR(pinctrl))
+		dev_warn(&pdev->dev, "pins are not configured from the driver\n");
+
 	ltq_port->fpiclk = clk_get_fpi();
 	if (IS_ERR(ltq_port->fpiclk)) {
 		pr_err("failed to get fpi clk\n");
@@ -733,6 +884,16 @@ lqasc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, ltq_port);
 
 	ret = uart_add_one_port(&lqasc_reg, port);
+
+#ifdef CONFIG_LTQ_CPU_FREQ
+	{
+	struct ltq_cpufreq* lqasc_cpufreq_p;
+	cpufreq_register_notifier(&lqasc_cpufreq_notifier_block, 
+                                  CPUFREQ_TRANSITION_NOTIFIER);
+    	lqasc_cpufreq_p = ltq_cpufreq_get();
+	list_add_tail(&lqasc_cpufreq_module.list, &lqasc_cpufreq_p->list_head_module);
+	}							  
+#endif
 
 	return ret;
 }

@@ -1,9 +1,9 @@
 #ifndef _LINUX_ATMBR2684_H
 #define _LINUX_ATMBR2684_H
-
 #include <linux/types.h>
 #include <linux/atm.h>
 #include <linux/if.h>		/* For IFNAMSIZ */
+#include <linux/if_ether.h>    /* ETH_P_* Add by Henry*/
 
 /*
  * Type of media we're bridging (ethernet, token ring, etc)  Currently only
@@ -56,6 +56,7 @@ struct atm_newif_br2684 {
 	int media;		/* BR2684_MEDIA_*, flags in upper bits */
 	char ifname[IFNAMSIZ];
 	int mtu;
+	int payload;		/* bridged or routed, Add by Henry*/
 };
 
 /*
@@ -85,6 +86,8 @@ struct atm_backend_br2684 {
 	int fcs_out;		/* BR2684_FCSOUT_* */
 	int fcs_auto;		/* 1: fcs_{in,out} disabled if no FCS rx'ed */
 	int encaps;		/* BR2684_ENCAPS_* */
+    	int payload;            /* BR2684_PAYLOAD_* Add by Henry*/
+    	int has_addr;           /* 1: include HW addr */
 	int has_vpiid;		/* 1: use vpn_id - Unsupported */
 	__u8 vpn_id[7];
 	int send_padding;	/* unsupported */

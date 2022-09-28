@@ -156,6 +156,10 @@ int pageblock_order __read_mostly;
 
 static void __free_pages_ok(struct page *page, unsigned int order);
 
+#ifdef CONFIG_LTQ_OPTIMIZATION
+extern void drop_slab(void);
+#endif
+
 /*
  * results with 256, 32 in the lowmem_reserve sysctl:
  *	1G machine -> (16M dma, 800M-16M normal, 1G-800M high)
@@ -2248,6 +2252,10 @@ __perform_reclaim(gfp_t gfp_mask, unsigned int order, struct zonelist *zonelist,
 	reclaim_state.reclaimed_slab = 0;
 	current->reclaim_state = &reclaim_state;
 
+#ifdef CONFIG_LTQ_OPTIMIZATION
+	drop_slab (); /* same as echo 3 > /proc/sys/vm/drop_caches */
+#endif
+ 
 	progress = try_to_free_pages(zonelist, order, gfp_mask, nodemask);
 
 	current->reclaim_state = NULL;

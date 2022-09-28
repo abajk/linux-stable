@@ -132,6 +132,12 @@
 
 #include "net-sysfs.h"
 
+#if defined(CONFIG_LTQ_UDP_REDIRECT) || defined(CONFIG_LTQ_UDP_REDIRECT_MODULE)
+#include <net/udp.h>
+#include <linux/udp_redirect.h>
+#endif
+
+
 /* Instead of increasing this, you should create a hash table. */
 #define MAX_GRO_SKBS 8
 
@@ -2898,6 +2904,10 @@ static inline void ____napi_schedule(struct softnet_data *sd,
 	__raise_softirq_irqoff(NET_RX_SOFTIRQ);
 }
 
+#if defined(CONFIG_LTQ_PPA_API_SW_FASTPATH)
+extern int32_t (*ppa_sw_fastpath_send_hook)(struct sk_buff *skb);
+#endif
+
 #ifdef CONFIG_RPS
 
 /* One global table that all flow-based protocols share. */
@@ -3190,6 +3200,15 @@ int netif_rx(struct sk_buff *skb)
 	net_timestamp_check(netdev_tstamp_prequeue, skb);
 
 	trace_netif_rx(skb);
+
+#if defined(CONFIG_LTQ_PPA_API_SW_FASTPATH)
+        if(ppa_sw_fastpath_send_hook!=NULL) {
+                if(ppa_sw_fastpath_send_hook(skb) == 0)
+                        return NET_RX_SUCCESS;
+        }
+#endif
+
+
 #ifdef CONFIG_RPS
 	if (static_key_false(&rps_needed)) {
 		struct rps_dev_flow voidflow, *rflow = &voidflow;

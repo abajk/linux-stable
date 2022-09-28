@@ -23,6 +23,15 @@
 #ifndef __LINUX_XHCI_HCD_H
 #define __LINUX_XHCI_HCD_H
 
+#define __LQ_XHCI_MSWAP__
+#define __LQ_XHCI_SSWAP__
+//#define __LQ_XHCI_CIP__
+
+#ifndef __LQ_XHCI_CIP__
+	#undef __LQ_XHCI_SSWAP__
+#endif
+
+
 #include <linux/usb.h>
 #include <linux/timer.h>
 #include <linux/kernel.h>
@@ -691,10 +700,34 @@ struct xhci_input_control_ctx {
 	__le32	rsvd2[6];
 };
 
-#define	EP_IS_ADDED(ctrl_ctx, i) \
-	(le32_to_cpu(ctrl_ctx->add_flags) & (1 << (i + 1)))
-#define	EP_IS_DROPPED(ctrl_ctx, i)       \
-	(le32_to_cpu(ctrl_ctx->drop_flags) & (1 << (i + 1)))
+#ifdef __LQ_XHCI_SSWAP__
+	#define	EP_IS_ADDED(dontcare, ctrl_ctx, i) \
+		(dontcare)?((ctrl_ctx->add_flags) & (1 << (i + 1))):(le32_to_cpu(ctrl_ctx->add_flags) & (1 << (i + 1)))
+	#define	EP_IS_DROPPED(dontcare, ctrl_ctx, i)       \
+		(dontcare)?((ctrl_ctx->drop_flags) & (1 << (i + 1))):(le32_to_cpu(ctrl_ctx->drop_flags) & (1 << (i + 1)))
+
+	#define	XHCI_LE32_TO_CPU(dontcare, data) \
+		(dontcare)?(data):(le32_to_cpu(data))
+	#define	XHCI_CPU_TO_LE32(dontcare, data) \
+		(dontcare)?(data):(cpu_to_le32(data))
+
+	#define	XHCI_LE64_TO_CPU(dontcare, data) \
+		(dontcare)?((((data) & 0x00000000ffffffffULL) << 32) |  (((data) & 0xffffffff00000000ULL) >> 32)):(le64_to_cpu(data))
+	#define	XHCI_CPU_TO_LE64(dontcare, data) \
+		(dontcare)?((((data) & 0x00000000ffffffffULL) << 32) |  (((data) & 0xffffffff00000000ULL) >> 32)):(cpu_to_le64(data))
+#else
+	#define	EP_IS_ADDED(dontcare, ctrl_ctx, i) \
+		(le32_to_cpu(ctrl_ctx->add_flags) & (1 << (i + 1)))
+	#define	EP_IS_DROPPED(dontcare, ctrl_ctx, i)       \
+		(le32_to_cpu(ctrl_ctx->drop_flags) & (1 << (i + 1)))
+
+	#define	XHCI_LE32_TO_CPU(dontcare, data) le32_to_cpu(data)
+	#define	XHCI_CPU_TO_LE32(dontcare, data) cpu_to_le32(data)
+
+	#define	XHCI_LE64_TO_CPU(dontcare, data) le64_to_cpu(data)
+	#define	XHCI_CPU_TO_LE64(dontcare, data) cpu_to_le64(data)
+#endif
+
 
 /* Represents everything that is needed to issue a command on the command ring.
  * It's useful to pre-allocate these for commands that cannot fail due to
@@ -1222,10 +1255,21 @@ union xhci_trb {
 
 #define TRB_TYPE_LINK(x)	(((x) & TRB_TYPE_BITMASK) == TRB_TYPE(TRB_LINK))
 /* Above, but for __le32 types -- can avoid work by swapping constants: */
-#define TRB_TYPE_LINK_LE32(x)	(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == \
-				 cpu_to_le32(TRB_TYPE(TRB_LINK)))
-#define TRB_TYPE_NOOP_LE32(x)	(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == \
-				 cpu_to_le32(TRB_TYPE(TRB_TR_NOOP)))
+#ifdef __LQ_XHCI_SSWAP__
+	#define TRB_TYPE_LINK_LE32(dontcare,x)	(dontcare)? \
+					(((x) & (TRB_TYPE_BITMASK)) == (TRB_TYPE(TRB_LINK))): \
+					(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == cpu_to_le32(TRB_TYPE(TRB_LINK)))
+
+	#define TRB_TYPE_NOOP_LE32(dontcare,x)	(dontcare)? \
+					(((x) & (TRB_TYPE_BITMASK)) == (TRB_TYPE(TRB_TR_NOOP))): \
+					(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == cpu_to_le32(TRB_TYPE(TRB_TR_NOOP)))
+#else
+	#define TRB_TYPE_LINK_LE32(dontcare,x) \
+					(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == cpu_to_le32(TRB_TYPE(TRB_LINK)))
+
+	#define TRB_TYPE_NOOP_LE32(dontcare,x) \
+					(((x) & cpu_to_le32(TRB_TYPE_BITMASK)) == cpu_to_le32(TRB_TYPE(TRB_TR_NOOP)))
+#endif
 
 #define NEC_FW_MINOR(p)		(((p) >> 0) & 0xff)
 #define NEC_FW_MAJOR(p)		(((p) >> 8) & 0xff)
@@ -1537,6 +1581,12 @@ struct xhci_hcd {
 	u32			port_status_u0;
 /* Compliance Mode Timer Triggered every 2 seconds */
 #define COMP_MODE_RCVRY_MSECS 2000
+	#ifdef __LQ_XHCI_MSWAP__
+	u8 mswap;
+	#endif
+	#ifdef __LQ_XHCI_SSWAP__
+	u8 snoswap;
+	#endif
 };
 
 /* convert between an HCD pointer and the corresponding EHCI_HCD */
@@ -1572,12 +1622,26 @@ static inline struct usb_hcd *xhci_to_hcd(struct xhci_hcd *xhci)
 static inline unsigned int xhci_readl(const struct xhci_hcd *xhci,
 		__le32 __iomem *regs)
 {
+#ifdef __LQ_XHCI_MSWAP__
+	if(xhci->mswap)
+		return swab32(readl(regs));
+	else
+		return readl(regs);
+#else
 	return readl(regs);
+#endif
 }
 static inline void xhci_writel(struct xhci_hcd *xhci,
 		const unsigned int val, __le32 __iomem *regs)
 {
+#ifdef __LQ_XHCI_MSWAP__
+	if(xhci->mswap)
+		writel(swab32(val), regs);
+	else
+		writel(val, regs);
+#else
 	writel(val, regs);
+#endif
 }
 
 /*
@@ -1593,9 +1657,25 @@ static inline u64 xhci_read_64(const struct xhci_hcd *xhci,
 		__le64 __iomem *regs)
 {
 	__u32 __iomem *ptr = (__u32 __iomem *) regs;
+#ifdef __LQ_XHCI_MSWAP__
+	u64 val_lo;
+	u64 val_hi;
+	if(xhci->mswap)
+	{
+		val_lo = swab32(readl(ptr));
+		val_hi = swab32(readl(ptr + 1));
+	}
+	else
+	{
+		val_lo = readl(ptr);
+		val_hi = readl(ptr + 1);
+	}
+	return val_lo + (val_hi << 32);
+#else
 	u64 val_lo = readl(ptr);
 	u64 val_hi = readl(ptr + 1);
 	return val_lo + (val_hi << 32);
+#endif
 }
 static inline void xhci_write_64(struct xhci_hcd *xhci,
 				 const u64 val, __le64 __iomem *regs)
@@ -1603,9 +1683,22 @@ static inline void xhci_write_64(struct xhci_hcd *xhci,
 	__u32 __iomem *ptr = (__u32 __iomem *) regs;
 	u32 val_lo = lower_32_bits(val);
 	u32 val_hi = upper_32_bits(val);
-
+#ifdef __LQ_XHCI_MSWAP__
+	if(xhci->mswap)
+	{
+		writel(swab32(val_lo), ptr);
+		writel(swab32(val_hi), ptr + 1);
+	}
+	else
+	{
+		writel(val_lo, ptr);
+		writel(val_hi, ptr + 1);
+	}
+#else
 	writel(val_lo, ptr);
 	writel(val_hi, ptr + 1);
+#endif
+
 }
 
 static inline int xhci_link_trb_quirk(struct xhci_hcd *xhci)

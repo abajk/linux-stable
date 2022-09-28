@@ -24,6 +24,9 @@
 
 #include <net/netfilter/nf_conntrack.h>
 #include <net/netfilter/nf_conntrack_core.h>
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+#include <net/netfilter/nf_conntrack_session_limit.h>
+#endif
 #include <net/netfilter/nf_conntrack_l3proto.h>
 #include <net/netfilter/nf_conntrack_l4proto.h>
 #include <net/netfilter/nf_conntrack_expect.h>
@@ -231,7 +234,10 @@ static int ct_seq_show(struct seq_file *s, void *v)
 
 	if (ct_show_secctx(s, ct))
 		goto release;
-
+#if defined(CONFIG_NF_CONNTRACK_EXTMARK)
+	if (seq_printf(s, "extmark=%u ", ct->extmark))
+		goto release;
+#endif
 #ifdef CONFIG_NF_CONNTRACK_ZONES
 	if (seq_printf(s, "zone=%u ", nf_ct_zone(ct)))
 		goto release;
@@ -483,6 +489,57 @@ static ctl_table nf_ct_sysctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+	{
+		.procname       = "nf_conntrack_default_prio_max",
+		.data           = &nf_conntrack_default_prio_max,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "nf_conntrack_default_prio_thresh",
+		.data           = &nf_conntrack_default_prio_thresh,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "nf_conntrack_low_prio_max",
+		.data           = &nf_conntrack_low_prio_max,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec,
+	},
+	{
+		.procname       = "nf_conntrack_low_prio_thresh",
+		.data           = &nf_conntrack_low_prio_thresh,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = proc_dointvec,
+	},
+       {
+                .procname       = "nf_conntrack_low_prio_data_rate",
+                .data           = &nf_conntrack_low_prio_data_rate,
+                .maxlen         = sizeof(int),
+                .mode           = 0644,
+                .proc_handler   = proc_dointvec,
+       },
+       {
+                .procname       = "nf_conntrack_default_prio_data_rate",
+                .data           = &nf_conntrack_default_prio_data_rate,
+                .maxlen         = sizeof(int),
+                .mode           = 0644,
+                .proc_handler   = proc_dointvec,
+       },
+       {
+                .procname       = "nf_conntrack_session_limit_enable",
+                .data           = &nf_conntrack_session_limit_enable,
+                .maxlen         = sizeof(int),
+                .mode           = 0644,
+                .proc_handler   = proc_dointvec,
+       },
+#endif
 	{ }
 };
 

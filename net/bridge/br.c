@@ -66,6 +66,10 @@ static int __init br_init(void)
 	br_fdb_test_addr_hook = br_fdb_test_addr;
 #endif
 
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	br_mcast_snoop_init();
+#endif
+
 	return 0;
 err_out4:
 	unregister_netdevice_notifier(&br_device_notifier);
@@ -98,6 +102,10 @@ static void __exit br_deinit(void)
 #endif
 
 	br_fdb_fini();
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	br_mcast_snoop_deinit();
+#endif
+
 }
 
 module_init(br_init)

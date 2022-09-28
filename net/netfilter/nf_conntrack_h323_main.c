@@ -1846,7 +1846,11 @@ static int __init nf_conntrack_h323_init(void)
 {
 	int ret;
 
+#ifdef CONFIG_LTQ_OPTIMIZATION
+	h323_buffer = kmalloc(32768, GFP_KERNEL);
+#else
 	h323_buffer = kmalloc(65536, GFP_KERNEL);
+#endif
 	if (!h323_buffer)
 		return -ENOMEM;
 	ret = nf_conntrack_helper_register(&nf_conntrack_helper_h245);

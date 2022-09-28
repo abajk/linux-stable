@@ -44,7 +44,7 @@ static unsigned int alloc_null_binding(struct nf_conn *ct, unsigned int hooknum)
 	return nf_nat_setup_info(ct, &range, HOOK2MANIP(hooknum));
 }
 
-static unsigned int nf_nat_rule_find(struct sk_buff *skb, unsigned int hooknum,
+static unsigned int __ipt_optimized nf_nat_rule_find(struct sk_buff *skb, unsigned int hooknum,
 				     const struct net_device *in,
 				     const struct net_device *out,
 				     struct nf_conn *ct)

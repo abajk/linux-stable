@@ -38,6 +38,9 @@
 #include <linux/mutex.h>
 #include <linux/mtd/ubi.h>
 #include <linux/mtd/mtd.h>
+#ifdef CONFIG_MTD_UBI_GLUEBI_ROOTFS_DEV
+  #include <linux/root_dev.h>
+#endif
 #include "ubi-media.h"
 
 #define err_msg(fmt, ...)                                   \
@@ -65,6 +68,26 @@ struct gluebi_device {
 /* List of all gluebi devices */
 static LIST_HEAD(gluebi_devices);
 static DEFINE_MUTEX(devices_mutex);
+#ifdef CONFIG_MTD_UBI_GLUEBI_ROOTFS_DEV
+  /* Buffers to read kernel command line */
+  extern char *saved_command_line;
+  char *rootfsmtd_ptr;
+  char command_line_buf[64];
+  #define ROOTFS_CMDLINE "rootfsname="
+
+/*
+ * gluebi_read_cmdline - read kernel command line and get value of 'rootfsname'
+ * return: 0
+ */
+static void __init gluebi_read_cmdline (void)
+{
+	rootfsmtd_ptr = strstr(saved_command_line, ROOTFS_CMDLINE);
+	if (rootfsmtd_ptr) {
+		sscanf(rootfsmtd_ptr, ROOTFS_CMDLINE"%s", command_line_buf);
+		printk("Gluebi: Found kernel commandline option 'rootfsname=%s'\n", command_line_buf);
+	}
+}
+#endif
 
 /**
  * find_gluebi_nolock - find a gluebi device.
@@ -352,6 +375,15 @@ static int gluebi_create(struct ubi_device_info *di,
 		return -ENFILE;
 	}
 
+#ifdef CONFIG_MTD_UBI_GLUEBI_ROOTFS_DEV
+	if (rootfsmtd_ptr) {
+		if (!strcmp(mtd->name, command_line_buf)) {
+			ROOT_DEV = MKDEV(MTD_BLOCK_MAJOR, mtd->index);
+			printk("Gluebi: mtd '%s' set to be root filesystem\n", mtd->name);
+		}
+	}
+#endif
+
 	mutex_lock(&devices_mutex);
 	list_add_tail(&gluebi->list, &gluebi_devices);
 	mutex_unlock(&devices_mutex);
@@ -492,6 +524,9 @@ static struct notifier_block gluebi_notifier = {
 
 static int __init ubi_gluebi_init(void)
 {
+#ifdef CONFIG_MTD_UBI_GLUEBI_ROOTFS_DEV
+	gluebi_read_cmdline ();
+#endif
 	return ubi_register_volume_notifier(&gluebi_notifier, 0);
 }
 

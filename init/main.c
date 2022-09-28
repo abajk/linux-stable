@@ -144,6 +144,7 @@ static char *ramdisk_execute_command;
  */
 unsigned int reset_devices;
 EXPORT_SYMBOL(reset_devices);
+EXPORT_SYMBOL(saved_command_line);
 
 static int __init set_reset_devices(char *str)
 {
@@ -158,6 +159,48 @@ const char * envp_init[MAX_INIT_ENVS+2] = { "HOME=/", "TERM=linux", NULL, };
 static const char *panic_later, *panic_param;
 
 extern const struct obs_kernel_param __setup_start[], __setup_end[];
+
+#ifdef CONFIG_STATIC_WLAN_MEMORY
+void *wlan_pgaddr;
+
+
+static void* alloc_phys_wlan(void)
+{
+        unsigned order;
+        struct page *page;
+        struct page *p;
+	unsigned long size;
+
+	size = (CONFIG_STATIC_WLAN_MEMORY_SIZE * 1024 * 1024);
+
+        size = PAGE_ALIGN(size);
+        order = get_order(size);
+
+        page = alloc_pages(GFP_KERNEL | __GFP_NORETRY | __GFP_NOWARN |
+                        __GFP_THISNODE, order);
+        if (!page)
+                return NULL;
+
+        split_page(page, order);
+
+        for (p = page + (size >> PAGE_SHIFT); p < page + (1 << order); ++p)
+                __free_page(p);
+
+        return page_address(page);
+}
+
+
+static void wlan_wave_reserve_mem (void) {
+	unsigned long base_w, size;
+
+	wlan_pgaddr = alloc_phys_wlan();
+	base_w = virt_to_phys(wlan_pgaddr);
+
+	size = PAGE_ALIGN(CONFIG_STATIC_WLAN_MEMORY_SIZE * 1024 * 1024);
+	reserve_bootmem(base_w, size, BOOTMEM_DEFAULT);
+}
+#endif
+
 
 static int __init obsolete_checksetup(char *line)
 {
@@ -879,6 +922,10 @@ static noinline void __init kernel_init_freeable(void)
 	sched_init_smp();
 
 	do_basic_setup();
+
+#ifdef CONFIG_STATIC_WLAN_MEMORY
+	wlan_wave_reserve_mem();
+#endif
 
 	/* Open the /dev/console on the rootfs, this should never fail */
 	if (sys_open((const char __user *) "/dev/console", O_RDWR, 0) < 0)

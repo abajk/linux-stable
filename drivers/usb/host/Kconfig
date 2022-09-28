@@ -702,3 +702,62 @@ config USB_HCD_SSB
 	  for ehci and ohci.
 
 	  If unsure, say N.
+
+config USB_HOST_LTQ
+	tristate "Lantiq USB Host Controller Driver"
+	depends on USB
+	default n
+	help
+	Lantiq USB Host Controller
+
+config USB_HOST_LTQ_FORCE_USB11
+	boolean "Forced USB1.1"
+	depends on USB_HOST_LTQ
+	default n
+	help
+	force to be USB 1.1
+
+config USB_HOST_LTQ_WITH_HS_ELECT_TST
+	boolean "With HS_Electrical Test"
+	depends on USB_HOST_LTQ
+	default n
+	help
+	With USBIF HSET routines
+
+config USB_HOST_LTQ_WITH_ISO
+	boolean "With ISO transfer"
+	depends on USB_HOST_LTQ
+	default n
+	help
+	With USBIF ISO transfer
+
+config USB_HOST_LTQ_COC
+	boolean "CoC in USB Host"
+	depends on USB_HOST_LTQ
+	default n
+	help
+	With CoC on Host
+
+choice
+	prompt "Lantiq unaligned buffer policy"
+	depends on USB_HOST_LTQ
+	help
+	   Lantiq unaligned buffer policy
+
+config USB_HOST_LTQ_UNALIGNED_ADJ
+	boolean "Adjust"
+	help
+	USB_HOST_LTQ_UNALIGNED_ADJ
+
+config USB_HOST_LTQ_UNALIGNED_CHK
+	boolean "Check-only"
+	help
+	USB_HOST_LTQ_UNALIGNED_CHK
+
+config USB_HOST_LTQ_UNALIGNED_NONE
+	boolean "No process"
+	help
+	USB_HOST_LTQ_UNALIGNED_NONE
+
+endchoice
+

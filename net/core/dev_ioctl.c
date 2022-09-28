@@ -326,6 +326,11 @@ static int dev_ifsioc(struct net *net, struct ifreq *ifr, unsigned int cmd)
 		    cmd == SIOCSMIIREG ||
 		    cmd == SIOCBRADDIF ||
 		    cmd == SIOCBRDELIF ||
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+                    cmd == SIOCBRADDMGREC ||
+                    cmd == SIOCBRDELMGREC ||
+                    cmd == SIOCBRSETROUTERPORT ||
+#endif
 		    cmd == SIOCSHWTSTAMP ||
 		    cmd == SIOCWANDEV) {
 			err = -EOPNOTSUPP;
@@ -520,6 +525,11 @@ int dev_ioctl(struct net *net, unsigned int cmd, void __user *arg)
 	case SIOCBONDCHANGEACTIVE:
 	case SIOCBRADDIF:
 	case SIOCBRDELIF:
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+        case SIOCBRADDMGREC:
+        case SIOCBRDELMGREC:
+        case SIOCBRSETROUTERPORT:
+#endif
 	case SIOCSHWTSTAMP:
 		if (!ns_capable(net->user_ns, CAP_NET_ADMIN))
 			return -EPERM;

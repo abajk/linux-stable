@@ -59,3 +59,16 @@ config BRIDGE_VLAN_FILTERING
 	  Say N to exclude this support and reduce the binary size.
 
 	  If unsure, say Y.
+
+config LTQ_MCAST_PROXY
+        tristate "MCAST Proxy support"
+        depends on m
+        default n
+        help
+          Lantiq Multicast Proxy support
+
+config LTQ_MCAST_SNOOPING
+        tristate "MCAST Snooping support"
+        default y
+        help
+          Lantiq Multicast Snooping support

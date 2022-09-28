@@ -131,6 +131,10 @@ static void del_nbp(struct net_bridge_port *p)
 	struct net_bridge *br = p->br;
 	struct net_device *dev = p->dev;
 
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	br_mcast_port_cleanup(p);
+#endif
+
 	sysfs_remove_link(br->ifobj, p->dev->name);
 
 	dev_set_promiscuity(dev, -1);
@@ -223,6 +227,13 @@ static struct net_bridge_port *new_nbp(struct net_bridge *br,
 	p->port_no = index;
 	p->flags = 0;
 	br_init_port(p);
+
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	br_mcast_port_init(p);
+	spin_lock_init(&p->mghash_lock);
+#endif
+
+	
 	p->state = BR_STATE_DISABLED;
 	br_stp_port_timer_init(p);
 	br_multicast_add_port(p);
@@ -381,6 +392,10 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 	list_add_rcu(&p->list, &br->port_list);
 
 	netdev_update_features(br->dev);
+	
+	dev->features |= NETIF_F_SOFT_FEATURES;
+
+	br->dev->features |= NETIF_F_SOFT_FEATURES;
 
 	spin_lock_bh(&br->lock);
 	changed_addr = br_stp_recalculate_bridge_id(br);
@@ -401,6 +416,10 @@ int br_add_if(struct net_bridge *br, struct net_device *dev)
 		netdev_err(dev, "failed insert local address bridge forwarding table\n");
 
 	kobject_uevent(&p->kobj, KOBJ_ADD);
+
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+		br_ifinfo_notify(RTM_NEWLINK, p);
+#endif
 
 	return 0;
 
@@ -445,6 +464,10 @@ int br_del_if(struct net_bridge *br, struct net_device *dev)
 		call_netdevice_notifiers(NETDEV_CHANGEADDR, br->dev);
 
 	netdev_update_features(br->dev);
+	
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	br_ifinfo_notify(RTM_DELLINK, p);
+#endif
 
 	return 0;
 }

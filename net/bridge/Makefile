@@ -10,6 +10,8 @@ bridge-y	:= br.o br_device.o br_fdb.o br_forward.o br_if.o br_input.o \
 
 bridge-$(CONFIG_SYSFS) += br_sysfs_if.o br_sysfs_br.o
 
+bridge-$(CONFIG_LTQ_MCAST_SNOOPING) += ltq_br_mcast_snooping.o
+
 bridge-$(CONFIG_BRIDGE_NETFILTER) += br_netfilter.o
 
 bridge-$(CONFIG_BRIDGE_IGMP_SNOOPING) += br_multicast.o br_mdb.o

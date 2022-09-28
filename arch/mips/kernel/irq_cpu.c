@@ -37,6 +37,11 @@
 #include <asm/mipsregs.h>
 #include <asm/mipsmtregs.h>
 
+#ifdef CONFIG_SOC_XWAY
+#include <xway/irq.h>
+#endif
+
+
 static inline void unmask_mips_irq(struct irq_data *d)
 {
 	set_c0_status(0x100 << (d->irq - MIPS_CPU_IRQ_BASE));
@@ -67,8 +72,15 @@ static unsigned int mips_mt_cpu_irq_startup(struct irq_data *d)
 	unsigned int vpflags = dvpe();
 
 	clear_c0_cause(0x100 << (d->irq - MIPS_CPU_IRQ_BASE));
+#ifndef CONFIG_SOC_XWAY
 	evpe(vpflags);
+#endif
 	unmask_mips_irq(d);
+
+#ifdef CONFIG_SOC_XWAY
+       evpe(vpflags);
+#endif
+
 	return 0;
 }
 

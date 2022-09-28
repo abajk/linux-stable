@@ -9,6 +9,13 @@ config NF_DEFRAG_IPV4
 	tristate
 	default n
 
+config LTQ_NF_ADDONS
+        bool 'LTQ netfilter addons'
+	default y
+        help
+          If chosen, all the additions done by LTQ to netfilters
+          could be slected. It is recommended to be alwyas on.
+
 config NF_CONNTRACK_IPV4
 	tristate "IPv4 connection tracking support (required for NAT)"
 	depends on NF_CONNTRACK
@@ -50,6 +57,11 @@ config IP_NF_IPTABLES
 
 if IP_NF_IPTABLES
 
+config LTQ_IPQOS_IPT_NF_OPT
+	bool "optimized iptables path"
+	help
+	  Put basic routing path and iptables codes into same code section.
+	  
 # The matches.
 config IP_NF_MATCH_AH
 	tristate '"ah" match support'
@@ -216,6 +228,16 @@ config NF_NAT_H323
 	depends on NF_CONNTRACK && NF_NAT_IPV4
 	default NF_NAT_IPV4 && NF_CONNTRACK_H323
 
+config NF_NAT_RTSP
+	tristate
+	depends on IP_NF_IPTABLES && NF_CONNTRACK && NF_NAT_IPV4
+	default NF_NAT_IPV4 && NF_CONNTRACK_RTSP
+
+config NF_NAT_MMS
+	tristate
+	depends on NF_CONNTRACK && NF_NAT_IPV4
+	default NF_NAT_IPV4 && NF_CONNTRACK_MMS
+
 # mangle + specific targets
 config IP_NF_MANGLE
 	tristate "Packet mangling"
@@ -285,6 +307,30 @@ config IP_NF_SECURITY
 	  with Mandatory Access Control (MAC) policy.
 	 
 	  If unsure, say N.
+
+config IP_NF_MATCH_WEBSTR
+       tristate 'webstring type match support'
+       default y	
+       help
+         This allows one to filter packets based on the string they contain.
+
+config IP_NF_MATCH_SYNFLOOD
+       tristate "synflood match support"
+       depends on IP_NF_IPTABLES && LTQ_NF_ADDONS
+       help
+         Firewall support against synflood DOS attack.
+
+config IP_NF_TARGET_TRIGGER
+       tristate 'TRIGGER target support (port-trigger)'
+       depends on NF_NAT && LTQ_NF_ADDONS
+       help
+         Port triggering is a specialized form of port forwarding in which
+         outbound traffic on predetermined ports "triggering ports") causes
+         inbound traffic to specific incoming ports to be dynamically
+         forwarded to the initiating host while the outbound ports are in use.
+
+         To compile it as a module, choose M here.  If unsure, say N.
+
 
 endif # IP_NF_IPTABLES
 

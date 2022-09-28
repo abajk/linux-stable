@@ -4,6 +4,9 @@
  *  by the Free Software Foundation.
  *
  *  Copyright © 2012 John Crispin <blogic@openwrt.org>
+ *  Copyright (c) 2013 Mohammad Firdaus B Alias Thani  <m.aliasthani@lantiq.com>
+ *	Bug-fix to allow write to flash possible
+ *	including minor hardware behaviour adaptation fixes
  */
 
 #include <linux/mtd/nand.h>
@@ -13,6 +16,7 @@
 #include <lantiq_soc.h>
 
 /* nand registers */
+#define EBU_ADDSEL0		0x20
 #define EBU_ADDSEL1		0x24
 #define EBU_NAND_CON		0xB0
 #define EBU_NAND_WAIT		0xB4
@@ -33,6 +37,7 @@
 
 /* we need to tel the ebu which addr we mapped the nand to */
 #define ADDSEL1_MASK(x)		(x << 4)
+#define ADDSEL0_REGEN		1
 #define ADDSEL1_REGEN		1
 
 /* we need to tell the EBU that we have nand attached and set it up properly */
@@ -44,6 +49,15 @@
 #define BUSCON1_RECOVC1		(1 << 2)
 #define BUSCON1_CMULT4		1
 
+#define BUSCON0_SETUP		(1 << 22)
+#define BUSCON0_ALEC		(2 << 14)
+#define BUSCON0_BCGEN_RES	(0x3 << 12)
+#define BUSCON0_WAITWRC2	(7 << 8)
+#define BUSCON0_WAITRDC2	(3 << 6)
+#define BUSCON0_HOLDC1		(3 << 4)
+#define BUSCON0_RECOVC1		(3 << 2)
+#define BUSCON0_CMULT4		2
+
 #define NAND_CON_CE		(1 << 20)
 #define NAND_CON_OUT_CS1	(1 << 10)
 #define NAND_CON_IN_CS1		(1 << 8)
@@ -54,19 +68,32 @@
 #define NAND_CON_CSMUX		(1 << 1)
 #define NAND_CON_NANDM		1
 
+#define NAND_ALE_SET		ltq_ebu_w32(ltq_ebu_r32(EBU_NAND_CON) | \
+							(1 << 18), EBU_NAND_CON);
+#define NAND_ALE_CLEAR		ltq_ebu_w32(ltq_ebu_r32(EBU_NAND_CON) & \
+							~(1 << 18), EBU_NAND_CON);
+
+static u32 xway_latchcmd;
+
 static void xway_reset_chip(struct nand_chip *chip)
 {
 	unsigned long nandaddr = (unsigned long) chip->IO_ADDR_W;
+	unsigned long timeout;
 	unsigned long flags;
 
 	nandaddr &= ~NAND_WRITE_ADDR;
 	nandaddr |= NAND_WRITE_CMD;
 
 	/* finish with a reset */
+	timeout = jiffies + msecs_to_jiffies(20);
+
 	spin_lock_irqsave(&ebu_lock, flags);
 	writeb(NAND_WRITE_CMD_RESET, (void __iomem *) nandaddr);
-	while ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
-		;
+	do {
+		if ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
+			break;
+		cond_resched();
+	} while (!time_after_eq(jiffies, timeout));
 	spin_unlock_irqrestore(&ebu_lock, flags);
 }
 
@@ -94,17 +121,23 @@ static void xway_cmd_ctrl(struct mtd_info *mtd, int cmd, unsigned int ctrl)
 	unsigned long flags;
 
 	if (ctrl & NAND_CTRL_CHANGE) {
-		nandaddr &= ~(NAND_WRITE_CMD | NAND_WRITE_ADDR);
-		if (ctrl & NAND_CLE)
-			nandaddr |= NAND_WRITE_CMD;
-		else
-			nandaddr |= NAND_WRITE_ADDR;
-		this->IO_ADDR_W = (void __iomem *) nandaddr;
+		if (ctrl & NAND_CLE) {
+			NAND_ALE_CLEAR;
+			xway_latchcmd = NAND_WRITE_CMD;
+		} else if (ctrl & NAND_ALE) {
+			NAND_ALE_SET;
+			xway_latchcmd = NAND_WRITE_ADDR;
+		} else {
+			if (xway_latchcmd == NAND_WRITE_ADDR) {
+				NAND_ALE_CLEAR;
+				xway_latchcmd = NAND_WRITE_DATA;
+			}
+		}
 	}
 
 	if (cmd != NAND_CMD_NONE) {
 		spin_lock_irqsave(&ebu_lock, flags);
-		writeb(cmd, this->IO_ADDR_W);
+		writeb(cmd, (void __iomem *) (nandaddr | xway_latchcmd));
 		while ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
 			;
 		spin_unlock_irqrestore(&ebu_lock, flags);
@@ -124,10 +157,44 @@ static unsigned char xway_read_byte(struct mtd_info *mtd)
 	int ret;
 
 	spin_lock_irqsave(&ebu_lock, flags);
-	ret = ltq_r8((void __iomem *)(nandaddr + NAND_READ_DATA));
+	ret = ltq_r8((void __iomem *)(nandaddr | NAND_READ_DATA));
+	while ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
+		;
 	spin_unlock_irqrestore(&ebu_lock, flags);
 
 	return ret;
+}
+
+static void xway_read_buf(struct mtd_info *mtd, u_char *buf, int len)
+{
+	struct nand_chip *this = mtd->priv;
+	unsigned long nandaddr = (unsigned long) this->IO_ADDR_R;
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&ebu_lock, flags);
+	for (i = 0; i < len; i++) {
+		buf[i] = ltq_r8((void __iomem *)(nandaddr | NAND_READ_DATA));
+		while ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
+			;
+	}
+	spin_unlock_irqrestore(&ebu_lock, flags);
+}
+
+static void xway_write_buf(struct mtd_info *mtd, const u_char *buf, int len)
+{
+	struct nand_chip *this = mtd->priv;
+	unsigned long nandaddr = (unsigned long) this->IO_ADDR_W;
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&ebu_lock, flags);
+	for (i = 0; i < len; i++) {
+		ltq_w8(buf[i], (void __iomem *) (nandaddr | NAND_WRITE_DATA));
+		while ((ltq_ebu_r32(EBU_NAND_WAIT) & NAND_WAIT_WR_C) == 0)
+			;
+	}
+	spin_unlock_irqrestore(&ebu_lock, flags);
 }
 
 static int xway_nand_probe(struct platform_device *pdev)
@@ -142,17 +209,40 @@ static int xway_nand_probe(struct platform_device *pdev)
 	if (cs && (*cs == 1))
 		cs_flag = NAND_CON_IN_CS1 | NAND_CON_OUT_CS1;
 
-	/* setup the EBU to run in NAND mode on our base addr */
-	ltq_ebu_w32(CPHYSADDR(nandaddr)
-		| ADDSEL1_MASK(3) | ADDSEL1_REGEN, EBU_ADDSEL1);
+	this->ecc.mode = NAND_ECC_SOFT;
 
-	ltq_ebu_w32(BUSCON1_SETUP | BUSCON1_BCGEN_RES | BUSCON1_WAITWRC2
-		| BUSCON1_WAITRDC2 | BUSCON1_HOLDC1 | BUSCON1_RECOVC1
-		| BUSCON1_CMULT4, LTQ_EBU_BUSCON1);
+	/* setup the EBU to run in NAND mode on our base addr for different CS */
+	if (cs && (*cs  == 1)) {
+		if (of_machine_is_compatible("lantiq,vr9")) {
+			ltq_ebu_w32(CPHYSADDR(nandaddr)
+				| ADDSEL1_MASK(3) | ADDSEL1_REGEN, EBU_ADDSEL1);
+		} else {
+			ltq_ebu_w32(CPHYSADDR(nandaddr)
+				| ADDSEL1_MASK(2) | ADDSEL1_REGEN, EBU_ADDSEL1);
+		}
 
-	ltq_ebu_w32(NAND_CON_NANDM | NAND_CON_CSMUX | NAND_CON_CS_P
-		| NAND_CON_SE_P | NAND_CON_WP_P | NAND_CON_PRE_P
-		| cs_flag, EBU_NAND_CON);
+		ltq_ebu_w32(BUSCON1_SETUP | BUSCON1_BCGEN_RES | BUSCON1_WAITWRC2
+			| BUSCON1_WAITRDC2 | BUSCON1_HOLDC1 | BUSCON1_RECOVC1
+			| BUSCON1_CMULT4, LTQ_EBU_BUSCON1);
+
+		ltq_ebu_w32(NAND_CON_NANDM | NAND_CON_CSMUX | NAND_CON_CS_P
+			| NAND_CON_SE_P | NAND_CON_WP_P | NAND_CON_PRE_P
+			| cs_flag, EBU_NAND_CON);
+	} else if (cs && (*cs == 0)) {
+		ltq_ebu_w32(CPHYSADDR(nandaddr)
+			|  ADDSEL1_MASK(1) | ADDSEL0_REGEN, EBU_ADDSEL0);
+
+		ltq_ebu_w32(BUSCON0_SETUP | BUSCON0_ALEC | BUSCON0_BCGEN_RES
+			| BUSCON0_WAITWRC2 | BUSCON0_WAITRDC2
+			| BUSCON0_HOLDC1 | BUSCON0_RECOVC1
+			| BUSCON0_CMULT4, LTQ_EBU_BUSCON0);
+
+		ltq_ebu_w32(NAND_CON_CSMUX | NAND_CON_CS_P
+			| NAND_CON_SE_P | NAND_CON_WP_P
+			| NAND_CON_PRE_P, EBU_NAND_CON);
+	} else {
+		pr_err("Platform does not support chip select %d\n", cs_flag);
+	}
 
 	/* finish with a reset */
 	xway_reset_chip(this);
@@ -161,7 +251,7 @@ static int xway_nand_probe(struct platform_device *pdev)
 }
 
 /* allow users to override the partition in DT using the cmdline */
-static const char *part_probes[] = { "cmdlinepart", "ofpart", NULL };
+static const char const *part_probes[] = { "cmdlinepart", "ofpart", NULL };
 
 static struct platform_nand_data xway_nand_data = {
 	.chip = {
@@ -175,6 +265,8 @@ static struct platform_nand_data xway_nand_data = {
 		.dev_ready	= xway_dev_ready,
 		.select_chip	= xway_select_chip,
 		.read_byte	= xway_read_byte,
+		.read_buf	= xway_read_buf,
+		.write_buf	= xway_write_buf,
 	}
 };
 

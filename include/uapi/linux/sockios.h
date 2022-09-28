@@ -124,6 +124,13 @@
 #define SIOCBRADDIF	0x89a2		/* add interface to bridge      */
 #define SIOCBRDELIF	0x89a3		/* remove interface from bridge */
 
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+/* bridge snooping */
+#define SIOCBRADDMGREC     0x89ab
+#define SIOCBRDELMGREC     0x89ac
+#define SIOCBRSETROUTERPORT    0x89ad
+#endif
+
 /* hardware time stamping: parameters in linux/net_tstamp.h */
 #define SIOCSHWTSTAMP   0x89b0
 

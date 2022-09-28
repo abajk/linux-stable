@@ -253,27 +253,27 @@ void xhci_print_trb_offsets(struct xhci_hcd *xhci, union xhci_trb *trb)
 void xhci_debug_trb(struct xhci_hcd *xhci, union xhci_trb *trb)
 {
 	u64	address;
-	u32	type = le32_to_cpu(trb->link.control) & TRB_TYPE_BITMASK;
+	u32	type = XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.control) & TRB_TYPE_BITMASK;
 
 	switch (type) {
 	case TRB_TYPE(TRB_LINK):
 		xhci_dbg(xhci, "Link TRB:\n");
 		xhci_print_trb_offsets(xhci, trb);
 
-		address = le64_to_cpu(trb->link.segment_ptr);
+		address = XHCI_LE64_TO_CPU(xhci->snoswap,trb->link.segment_ptr);
 		xhci_dbg(xhci, "Next ring segment DMA address = 0x%llx\n", address);
 
 		xhci_dbg(xhci, "Interrupter target = 0x%x\n",
-			 GET_INTR_TARGET(le32_to_cpu(trb->link.intr_target)));
+			 GET_INTR_TARGET(XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.intr_target)));
 		xhci_dbg(xhci, "Cycle bit = %u\n",
-			 le32_to_cpu(trb->link.control) & TRB_CYCLE);
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.control) & TRB_CYCLE);
 		xhci_dbg(xhci, "Toggle cycle bit = %u\n",
-			 le32_to_cpu(trb->link.control) & LINK_TOGGLE);
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.control) & LINK_TOGGLE);
 		xhci_dbg(xhci, "No Snoop bit = %u\n",
-			 le32_to_cpu(trb->link.control) & TRB_NO_SNOOP);
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.control) & TRB_NO_SNOOP);
 		break;
 	case TRB_TYPE(TRB_TRANSFER):
-		address = le64_to_cpu(trb->trans_event.buffer);
+		address = XHCI_LE64_TO_CPU(xhci->snoswap,trb->trans_event.buffer);
 		/*
 		 * FIXME: look at flags to figure out if it's an address or if
 		 * the data is directly in the buffer field.
@@ -281,12 +281,12 @@ void xhci_debug_trb(struct xhci_hcd *xhci, union xhci_trb *trb)
 		xhci_dbg(xhci, "DMA address or buffer contents= %llu\n", address);
 		break;
 	case TRB_TYPE(TRB_COMPLETION):
-		address = le64_to_cpu(trb->event_cmd.cmd_trb);
+		address = XHCI_LE64_TO_CPU(xhci->snoswap,trb->event_cmd.cmd_trb);
 		xhci_dbg(xhci, "Command TRB pointer = %llu\n", address);
 		xhci_dbg(xhci, "Completion status = %u\n",
-			 GET_COMP_CODE(le32_to_cpu(trb->event_cmd.status)));
+			 GET_COMP_CODE(XHCI_LE32_TO_CPU(xhci->snoswap,trb->event_cmd.status)));
 		xhci_dbg(xhci, "Flags = 0x%x\n",
-			 le32_to_cpu(trb->event_cmd.flags));
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->event_cmd.flags));
 		break;
 	default:
 		xhci_dbg(xhci, "Unknown TRB with TRB type ID %u\n",
@@ -318,10 +318,10 @@ void xhci_debug_segment(struct xhci_hcd *xhci, struct xhci_segment *seg)
 	for (i = 0; i < TRBS_PER_SEGMENT; ++i) {
 		trb = &seg->trbs[i];
 		xhci_dbg(xhci, "@%016llx %08x %08x %08x %08x\n", addr,
-			 lower_32_bits(le64_to_cpu(trb->link.segment_ptr)),
-			 upper_32_bits(le64_to_cpu(trb->link.segment_ptr)),
-			 le32_to_cpu(trb->link.intr_target),
-			 le32_to_cpu(trb->link.control));
+			 lower_32_bits(XHCI_LE64_TO_CPU(xhci->snoswap,trb->link.segment_ptr)),
+			 upper_32_bits(XHCI_LE64_TO_CPU(xhci->snoswap,trb->link.segment_ptr)),
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.intr_target),
+			 XHCI_LE32_TO_CPU(xhci->snoswap,trb->link.control));
 		addr += sizeof(*trb);
 	}
 }
@@ -400,10 +400,10 @@ void xhci_dbg_erst(struct xhci_hcd *xhci, struct xhci_erst *erst)
 		entry = &erst->entries[i];
 		xhci_dbg(xhci, "@%016llx %08x %08x %08x %08x\n",
 			 addr,
-			 lower_32_bits(le64_to_cpu(entry->seg_addr)),
-			 upper_32_bits(le64_to_cpu(entry->seg_addr)),
-			 le32_to_cpu(entry->seg_size),
-			 le32_to_cpu(entry->rsvd));
+			 lower_32_bits(XHCI_LE64_TO_CPU(xhci->snoswap,entry->seg_addr)),
+			 upper_32_bits(XHCI_LE64_TO_CPU(xhci->snoswap,entry->seg_addr)),
+			 XHCI_LE32_TO_CPU(xhci->snoswap,entry->seg_size),
+			 XHCI_LE32_TO_CPU(xhci->snoswap,entry->rsvd));
 		addr += sizeof(*entry);
 	}
 }
@@ -437,7 +437,7 @@ char *xhci_get_slot_state(struct xhci_hcd *xhci,
 {
 	struct xhci_slot_ctx *slot_ctx = xhci_get_slot_ctx(xhci, ctx);
 
-	switch (GET_SLOT_STATE(le32_to_cpu(slot_ctx->dev_state))) {
+	switch (GET_SLOT_STATE(XHCI_LE32_TO_CPU(xhci->snoswap,slot_ctx->dev_state))) {
 	case SLOT_STATE_ENABLED:
 		return "enabled/disabled";
 	case SLOT_STATE_DEFAULT:

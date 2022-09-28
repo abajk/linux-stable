@@ -29,6 +29,11 @@
 
 #include "common.h"
 
+#ifdef CONFIG_LTQ_PORT_MIRROR
+extern struct net_device* (*ifx_get_mirror_netdev)(void);
+extern uint32_t (*ifx_is_device_type_wireless) (void);
+#endif
+
 static void skb_debug(const struct sk_buff *skb)
 {
 #ifdef SKB_DEBUG
@@ -38,7 +43,10 @@ static void skb_debug(const struct sk_buff *skb)
 #endif
 }
 
+#define BR2684_LLC_LEN         3
+#define BR2684_SNAP_LEN        3
 #define BR2684_ETHERTYPE_LEN	2
+#define BR2684_PID_LEN		2
 #define BR2684_PAD_LEN		2
 
 #define LLC		0xaa, 0xaa, 0x03
@@ -349,7 +357,13 @@ static netdev_tx_t br2684_start_xmit(struct sk_buff *skb,
  */
 static int br2684_mac_addr(struct net_device *dev, void *p)
 {
+#ifdef CONFIG_LTQ_ATM
+       int err = 0;
+       struct sockaddr *addr = p;
+       memcpy(dev->dev_addr, addr->sa_data, dev->addr_len);
+#else
 	int err = eth_mac_addr(dev, p);
+#endif
 	if (!err)
 		BRPRIV(dev)->mac_was_set = 1;
 	return err;
@@ -425,6 +439,9 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 	struct br2684_vcc *brvcc = BR2684_VCC(atmvcc);
 	struct net_device *net_dev = brvcc->device;
 	struct br2684_dev *brdev = BRPRIV(net_dev);
+#ifdef CONFIG_LTQ_PORT_MIRROR
+	struct net_device *mirror_netdev = NULL;
+#endif
 
 	pr_debug("\n");
 
@@ -506,12 +523,58 @@ static void br2684_push(struct atm_vcc *atmvcc, struct sk_buff *skb)
 	ATM_SKB(skb)->vcc = atmvcc;	/* needed ? */
 	pr_debug("received packet's protocol: %x\n", ntohs(skb->protocol));
 	skb_debug(skb);
+/* Adopted from 2.4 BSP */
+       if (!(net_dev->flags & IFF_MULTICAST) && (skb->pkt_type == PACKET_MULTICAST))
+       { /* drop multicast packets */
+               struct net_device *dev = skb->dev;
+               dev->stats.rx_dropped++;
+               dev_kfree_skb(skb);
+               return;
+       }
+/*165001*/
 	/* sigh, interface is down? */
 	if (unlikely(!(net_dev->flags & IFF_UP)))
 		goto dropped;
 	net_dev->stats.rx_packets++;
 	net_dev->stats.rx_bytes += skb->len;
 	memset(ATM_SKB(skb), 0, sizeof(struct atm_skb_data));
+
+#ifdef CONFIG_LTQ_PORT_MIRROR
+    if (ifx_get_mirror_netdev)
+    {
+        mirror_netdev = ifx_get_mirror_netdev();
+        if (mirror_netdev != NULL)
+        {
+            struct sk_buff *new_skb = skb_copy(skb, GFP_ATOMIC);
+	    struct ethhdr *eth = NULL;
+	    int i = 0;
+
+            if ( new_skb != NULL )
+            {
+                new_skb->dev = mirror_netdev;
+                skb_push(new_skb, ETH_HLEN);
+                eth = (struct ethhdr *)new_skb->data;
+                memset(eth->h_source, 0x0, ETH_ALEN);
+
+		/*
+		 * for mirroring LAN <-> WAN traffic to a given SSID
+		 * the WLAN STA need to work in promiscuous transmitter mode, but most
+		 * standard WLAN STAs do not support this. Hence we are broacasting
+		 * mirrored packets to all SSIDs. This code path is active only when Port
+		 * mirroring is enabled in /proc/mirror.
+		 */
+
+	        if (ifx_is_device_type_wireless())
+	        {
+                    for ( i = 0; i < 6; i++ )
+                        eth->h_dest[i] = 0xFF;
+	        }
+                dev_queue_xmit(new_skb);
+            }
+        }
+    }
+#endif
+
 	netif_rx(skb);
 	return;
 
@@ -523,6 +586,10 @@ error:
 free_skb:
 	dev_kfree_skb(skb);
 }
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+extern void (*ppa_hook_mpoa_setup)(struct atm_vcc *, int, int);
+#endif
 
 /*
  * Assign a vcc to a dev
@@ -595,7 +662,11 @@ static int br2684_regvcc(struct atm_vcc *atmvcc, void __user * arg)
 	barrier();
 	atmvcc->push = br2684_push;
 	atmvcc->pop = br2684_pop;
-	atmvcc->release_cb = br2684_release_cb;
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+   if ( ppa_hook_mpoa_setup )
+		ppa_hook_mpoa_setup(atmvcc, brdev->payload == p_routed ? 3 : 0, brvcc->encaps == BR2684_ENCAPS_LLC ? 1 : 0);     //  IPoA or EoA w/o FCS
+#endif
+   atmvcc->release_cb = br2684_release_cb;
 	atmvcc->owner = THIS_MODULE;
 
 	/* initialize netdev carrier state */
@@ -629,6 +700,41 @@ static const struct net_device_ops br2684_netdev_ops_routed = {
 	.ndo_set_mac_address	= br2684_mac_addr,
 	.ndo_change_mtu		= eth_change_mtu
 };
+
+static int br2684_unregvcc(struct atm_vcc *atmvcc, void __user *arg)
+{
+	int err;
+	struct br2684_vcc *brvcc;
+	struct br2684_dev *brdev;
+	struct net_device *net_dev;
+	struct atm_backend_br2684 be;
+
+	if (copy_from_user(&be, arg, sizeof be))
+		return -EFAULT;
+	write_lock_irq(&devs_lock);
+	net_dev = br2684_find_dev(&be.ifspec);
+	if (net_dev == NULL) {
+		printk(KERN_ERR
+			"br2684: tried to unregister to non-existant device\n");
+		err = -ENXIO;
+		goto error;
+	}
+	brdev = BRPRIV(net_dev);
+	while (!list_empty(&brdev->brvccs)) {
+		brvcc = list_entry_brvcc(brdev->brvccs.next);
+		br2684_close_vcc(brvcc);
+	}
+	list_del(&brdev->br2684_devs);
+	write_unlock_irq(&devs_lock);
+	unregister_netdev(net_dev);
+	free_netdev(net_dev);
+	atmvcc->push = NULL;
+	vcc_release_async(atmvcc, -ETIMEDOUT);
+	return 0;
+error:
+	write_unlock_irq(&devs_lock);
+	return err;
+}
 
 static void br2684_setup(struct net_device *netdev)
 {
@@ -697,6 +803,8 @@ static int br2684_create(void __user *arg)
 		free_netdev(netdev);
 		return err;
 	}
+       /* Mark br2684 device */
+       netdev->priv_flags |= IFF_BR2684;
 
 	write_lock_irq(&devs_lock);
 
@@ -728,6 +836,7 @@ static int br2684_ioctl(struct socket *sock, unsigned int cmd,
 	switch (cmd) {
 	case ATM_SETBACKEND:
 	case ATM_NEWBACKENDIF:
+	case ATM_DELBACKENDIF:
 		err = get_user(b, (atm_backend_t __user *) argp);
 		if (err)
 			return -EFAULT;
@@ -739,6 +848,8 @@ static int br2684_ioctl(struct socket *sock, unsigned int cmd,
 			if (sock->state != SS_CONNECTED)
 				return -EINVAL;
 			return br2684_regvcc(atmvcc, argp);
+		} else if (cmd == ATM_DELBACKENDIF) {
+			return br2684_unregvcc(atmvcc, argp);
 		} else {
 			return br2684_create(argp);
 		}
@@ -878,9 +989,109 @@ static void __exit br2684_exit(void)
 	}
 }
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+int ppa_br2684_get_vcc(struct net_device *netdev, struct atm_vcc **pvcc)
+{
+    if ( netdev && (uint32_t)br2684_start_xmit == (uint32_t)netdev->netdev_ops->ndo_start_xmit)
+    {
+        struct br2684_dev *brdev;
+        struct br2684_vcc *brvcc;
+
+  
+        brdev = (struct br2684_dev *)BRPRIV(netdev);
+        brvcc = list_empty(&brdev->brvccs) ? NULL : list_entry(brdev->brvccs.next, struct br2684_vcc, brvccs);
+
+        if ( brvcc )
+        {
+            *pvcc = brvcc->atmvcc;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+int32_t ppa_if_is_br2684(struct net_device *netdev, char *ifname)
+{
+    if ( !netdev )
+    {
+        netdev = dev_get_by_name(&init_net,ifname);
+        if ( !netdev )
+            return 0;   //  can not get
+        else
+            dev_put(netdev);
+    }
+
+    return (uint32_t)br2684_start_xmit == (uint32_t)netdev->netdev_ops->ndo_start_xmit ? 1 : 0;
+}
+
+int32_t ppa_if_is_ipoa(struct net_device *netdev, char *ifname)
+{
+    if ( !netdev )
+    {
+        netdev = dev_get_by_name(&init_net,ifname);
+        if ( !netdev )
+            return 0;
+        else
+            dev_put(netdev);
+    }
+
+    if ( ppa_if_is_br2684(netdev, ifname) )
+    {
+        struct br2684_dev *brdev;
+        //struct br2684_vcc *brvcc;
+
+//  #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 0)
+        //brdev = (struct br2684_dev *)netif->priv;
+        brdev = BRPRIV(netdev);
+//  #else
+//        brdev = (struct br2684_dev *)((char *)(netif) - (unsigned long)(&((struct br2684_dev *)0)->net_dev));
+//  #endif
+        //brvcc = list_empty(&brdev->brvccs) ? NULL : list_entry(brdev->brvccs.next, struct br2684_vcc, brvccs);
+
+        //return brvcc && brvcc->payload == p_routed ? 1 : 0;
+        return brdev && brdev->payload == p_routed ? 1 : 0;
+    }
+
+    return 0;
+}
+#endif
+
+#ifdef CONFIG_WAN_VLAN_SUPPORT
+int br2684_vlan_dev_get_vid(struct net_device *dev, uint16_t *vid)
+{
+	int ret=0;
+	struct br2684_dev *brdev;
+
+	if (!dev || !vid)
+		return -EINVAL;
+
+	dev_hold(dev);
+	brdev = BRPRIV(dev);
+
+	if (brdev->vlan.tag_vlan_enable) {
+		*vid = brdev->vlan.vlan_vci;
+	} else {
+		ret=-EINVAL;
+	}
+
+	pr_debug("(%s) Returning VLAN Id [%d]; VLAN enable [%d] for [%s]\n",
+		__func__, *vid, brdev->vlan.tag_vlan_enable, dev->name);
+
+	dev_put(dev);
+	return ret;
+}
+EXPORT_SYMBOL(br2684_vlan_dev_get_vid);
+#endif
+
 module_init(br2684_init);
 module_exit(br2684_exit);
 
 MODULE_AUTHOR("Marcell GAL");
 MODULE_DESCRIPTION("RFC2684 bridged protocols over ATM/AAL5");
 MODULE_LICENSE("GPL");
+#if defined(CONFIG_LTQ_PPA_API_MODULE)
+  EXPORT_SYMBOL(ppa_if_is_ipoa);
+  EXPORT_SYMBOL(ppa_if_is_br2684);
+  EXPORT_SYMBOL(ppa_br2684_get_vcc);
+#endif

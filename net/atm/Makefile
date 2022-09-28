@@ -13,3 +13,4 @@ atm-$(CONFIG_PROC_FS) += proc.o
 obj-$(CONFIG_ATM_LANE) += lec.o
 obj-$(CONFIG_ATM_MPOA) += mpoa.o
 obj-$(CONFIG_PPPOATM) += pppoatm.o
+obj-$(CONFIG_LTQ_OAM) += koam.o

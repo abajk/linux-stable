@@ -17,6 +17,7 @@ obj-$(CONFIG_BRIDGE_EBT_IP) += ebt_ip.o
 obj-$(CONFIG_BRIDGE_EBT_IP6) += ebt_ip6.o
 obj-$(CONFIG_BRIDGE_EBT_LIMIT) += ebt_limit.o
 obj-$(CONFIG_BRIDGE_EBT_MARK) += ebt_mark_m.o
+obj-$(CONFIG_BRIDGE_EBT_EXTMARK) += ebt_extmark_m.o
 obj-$(CONFIG_BRIDGE_EBT_PKTTYPE) += ebt_pkttype.o
 obj-$(CONFIG_BRIDGE_EBT_STP) += ebt_stp.o
 obj-$(CONFIG_BRIDGE_EBT_VLAN) += ebt_vlan.o
@@ -24,6 +25,7 @@ obj-$(CONFIG_BRIDGE_EBT_VLAN) += ebt_vlan.o
 # targets
 obj-$(CONFIG_BRIDGE_EBT_ARPREPLY) += ebt_arpreply.o
 obj-$(CONFIG_BRIDGE_EBT_MARK_T) += ebt_mark.o
+obj-$(CONFIG_BRIDGE_EBT_EXTMARK_T) += ebt_extmark.o
 obj-$(CONFIG_BRIDGE_EBT_DNAT) += ebt_dnat.o
 obj-$(CONFIG_BRIDGE_EBT_REDIRECT) += ebt_redirect.o
 obj-$(CONFIG_BRIDGE_EBT_SNAT) += ebt_snat.o

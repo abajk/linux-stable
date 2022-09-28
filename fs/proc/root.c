@@ -269,3 +269,6 @@ void pid_ns_release_proc(struct pid_namespace *ns)
 {
 	kern_unmount(ns->proc_mnt);
 }
+#if (defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE))
+EXPORT_SYMBOL(proc_root);
+#endif

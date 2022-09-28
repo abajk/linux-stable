@@ -153,13 +153,24 @@ static void __cpuinit vsmp_init_secondary(void)
 {
 #ifdef CONFIG_IRQ_GIC
 	/* This is Malta specific: IPI,performance and timer interrupts */
-	if (gic_present)
+	if (gic_present) {
+#ifdef CONFIG_SOC_XWAY
+               set_c0_status(ST0_IM); //enable all the interrupt lines.
+#else
 		change_c0_status(ST0_IM, STATUSF_IP3 | STATUSF_IP4 |
 					 STATUSF_IP6 | STATUSF_IP7);
-	else
 #endif
+	} else {
+#endif
+#ifdef CONFIG_SOC_XWAY
+               set_c0_status(ST0_IM); //enable all the interrupt lines.
+#else
 		change_c0_status(ST0_IM, STATUSF_IP0 | STATUSF_IP1 |
 					 STATUSF_IP6 | STATUSF_IP7);
+#endif
+#ifdef CONFIG_IRQ_GIC
+	}
+#endif
 }
 
 static void __cpuinit vsmp_smp_finish(void)

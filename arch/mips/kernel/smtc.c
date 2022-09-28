@@ -562,10 +562,18 @@ void smtc_prepare_cpus(int cpus)
 			 * Clear ERL/EXL of VPEs other than 0
 			 * and set restricted interrupt enable/mask.
 			 */
+
+#ifdef CONFIG_SOC_XWAY // Enable IE and IM bits for all the intr lines.
+                        write_vpe_c0_status((read_vpe_c0_status()
+                                & ~(ST0_BEV | ST0_ERL | ST0_EXL))
+                                | (ST0_IM | ST0_IE));
+#else
+
 			write_vpe_c0_status((read_vpe_c0_status()
 				& ~(ST0_BEV | ST0_ERL | ST0_EXL | ST0_IM))
 				| (STATUSF_IP0 | STATUSF_IP1 | STATUSF_IP7
 				| ST0_IE));
+#endif
 			/*
 			 * set config to be the same as vpe0,
 			 *  particularly kseg0 coherency alg

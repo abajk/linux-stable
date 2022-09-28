@@ -34,6 +34,18 @@
 #include <linux/netdev_features.h>
 #include <net/flow_keys.h>
 
+#ifdef CONFIG_NETWORK_EXTMARK
+#include <linux/extmark.h>
+#endif
+
+/* reccommended as it's faster*/
+#define GET_DATA_FROM_MARK_OPT(mark, mask, pos, value) value = ((mark & mask) >> pos)
+#define SET_DATA_FROM_MARK_OPT(mark, mask, pos, value) mark &= ~mask; mark |= ((value << pos) & mask)
+
+#define MASK(pos, len) (((1<<len)-1)<<pos)
+#define GET_DATA_FROM_MARK(mark, pos, len, value) GET_DATA_FROM_MARK_OPT(mark, MASK(pos, len), pos, value)
+#define SET_DATA_FROM_MARK(mark, pos, len, value) SET_DATA_FROM_MARK_OPT(mark, MASK(pos, len), pos, value)
+
 /* Don't change this without changing skb_csum_unnecessary! */
 #define CHECKSUM_NONE 0
 #define CHECKSUM_UNNECESSARY 1
@@ -48,6 +60,10 @@
 	SKB_WITH_OVERHEAD((PAGE_SIZE << (ORDER)) - (X))
 #define SKB_MAX_HEAD(X)		(SKB_MAX_ORDER((X), 0))
 #define SKB_MAX_ALLOC		(SKB_MAX_ORDER(0, 2))
+
+#ifdef CONFIG_LANTIQ_IPQOS_MARK_SKBPRIO
+
+#endif
 
 /* return minimum truesize of one skb containing X bytes of data */
 #define SKB_TRUESIZE(X) ((X) +						\
@@ -502,6 +518,9 @@ struct sk_buff {
 #endif
 #ifdef CONFIG_NETWORK_SECMARK
 	__u32			secmark;
+#endif
+#ifdef CONFIG_NETWORK_EXTMARK
+	__u32			extmark;
 #endif
 	union {
 		__u32		mark;
@@ -2498,6 +2517,12 @@ extern int	       skb_shift(struct sk_buff *tgt, struct sk_buff *skb,
 
 extern struct sk_buff *skb_segment(struct sk_buff *skb,
 				   netdev_features_t features);
+
+#ifdef CONFIG_LANTIQ_IPQOS_MARK_SKBPRIO
+
+extern int skb_mark_priority(struct sk_buff *skb);
+
+#endif
 
 static inline void *skb_header_pointer(const struct sk_buff *skb, int offset,
 				       int len, void *buffer)

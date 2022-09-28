@@ -305,7 +305,11 @@ static int irq_expand_nr_irqs(unsigned int nr)
  * @irq:	The irq number to handle
  *
  */
+#ifdef CONFIG_LTQ_SYS_OPT
+int __system generic_handle_irq(unsigned int irq)
+#else
 int generic_handle_irq(unsigned int irq)
+#endif
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 

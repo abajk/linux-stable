@@ -14,6 +14,7 @@
  * published by the Free Software Foundation.
  *
  */
+#define DEBUG
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -68,7 +69,7 @@ static DEFINE_PER_CPU(int, cpufreq_policy_cpu);
 static DEFINE_PER_CPU(struct rw_semaphore, cpu_policy_rwsem);
 
 #define lock_policy_rwsem(mode, cpu)					\
-static int lock_policy_rwsem_##mode(int cpu)				\
+int lock_policy_rwsem_##mode(int cpu)				\
 {									\
 	int policy_cpu = per_cpu(cpufreq_policy_cpu, cpu);		\
 	BUG_ON(policy_cpu == -1);					\
@@ -79,9 +80,10 @@ static int lock_policy_rwsem_##mode(int cpu)				\
 
 lock_policy_rwsem(read, cpu);
 lock_policy_rwsem(write, cpu);
+EXPORT_SYMBOL_GPL(lock_policy_rwsem_write);
 
 #define unlock_policy_rwsem(mode, cpu)					\
-static void unlock_policy_rwsem_##mode(int cpu)				\
+void unlock_policy_rwsem_##mode(int cpu)				\
 {									\
 	int policy_cpu = per_cpu(cpufreq_policy_cpu, cpu);		\
 	BUG_ON(policy_cpu == -1);					\
@@ -90,6 +92,7 @@ static void unlock_policy_rwsem_##mode(int cpu)				\
 
 unlock_policy_rwsem(read, cpu);
 unlock_policy_rwsem(write, cpu);
+EXPORT_SYMBOL_GPL(unlock_policy_rwsem_write);
 
 /* internal prototypes */
 static int __cpufreq_governor(struct cpufreq_policy *policy,
@@ -249,13 +252,14 @@ static inline void adjust_jiffies(unsigned long val, struct cpufreq_freqs *ci)
 #endif
 
 
-void __cpufreq_notify_transition(struct cpufreq_policy *policy,
+int __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	int ret = -1;
 	BUG_ON(irqs_disabled());
 
 	if (cpufreq_disabled())
-		return;
+		return ret;
 
 	freqs->flags = cpufreq_driver->flags;
 	pr_debug("notification %u of frequency transition to %u kHz\n",
@@ -277,8 +281,9 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 				freqs->old = policy->cur;
 			}
 		}
-		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
-				CPUFREQ_PRECHANGE, freqs);
+		ret = srcu_notifier_call_chain(
+					&cpufreq_transition_notifier_list,
+					CPUFREQ_PRECHANGE, freqs);
 		adjust_jiffies(CPUFREQ_PRECHANGE, freqs);
 		break;
 
@@ -287,12 +292,14 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		pr_debug("FREQ: %lu - CPU: %lu", (unsigned long)freqs->new,
 			(unsigned long)freqs->cpu);
 		trace_cpu_frequency(freqs->new, freqs->cpu);
-		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
-				CPUFREQ_POSTCHANGE, freqs);
+		ret = srcu_notifier_call_chain(
+					&cpufreq_transition_notifier_list,
+					CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
 			policy->cur = freqs->new;
 		break;
 	}
+	return ret;
 }
 /**
  * cpufreq_notify_transition - call notifier chain and adjust_jiffies
@@ -302,11 +309,17 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
  * function. It is called twice on all CPU frequency changes that have
  * external effects.
  */
-void cpufreq_notify_transition(struct cpufreq_policy *policy,
+int cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
-	for_each_cpu(freqs->cpu, policy->cpus)
-		__cpufreq_notify_transition(policy, freqs, state);
+	int ret = -1;
+	for_each_cpu(freqs->cpu, policy->cpus){
+		ret = __cpufreq_notify_transition(policy, freqs, state);
+		if(!ret){
+			break;
+		}
+	}
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cpufreq_notify_transition);
 
@@ -461,7 +474,7 @@ static ssize_t show_scaling_governor(struct cpufreq_policy *policy, char *buf)
 /**
  * store_scaling_governor - store policy for the specified CPU
  */
-static ssize_t store_scaling_governor(struct cpufreq_policy *policy,
+ssize_t store_scaling_governor(struct cpufreq_policy *policy,
 					const char *buf, size_t count)
 {
 	unsigned int ret;
@@ -848,9 +861,9 @@ static int cpufreq_add_policy_cpu(unsigned int cpu, unsigned int sibling,
  *
  * Adds the cpufreq interface for a CPU device.
  *
- * The Oracle says: try running cpufreq registration/unregistration concurrently
- * with with cpu hotplugging and all hell will break loose. Tried to clean this
- * mess up, but more thorough testing is needed. - Mathieu
+ * The Oracle says: try running cpufreq registration/unregistration
+ * concurrently with with cpu hotplugging and all hell will break loose.
+ * Tried to clean this mess up, but more thorough testing is needed. - Mathieu
  */
 static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 {
@@ -1005,7 +1018,8 @@ static void update_policy_cpu(struct cpufreq_policy *policy, unsigned int cpu)
  * Caller should already have policy_rwsem in write mode for this CPU.
  * This routine frees the rwsem before returning.
  */
-static int __cpufreq_remove_dev(struct device *dev, struct subsys_interface *sif)
+static int __cpufreq_remove_dev(struct device *dev,
+				struct subsys_interface *sif)
 {
 	unsigned int cpu = dev->id, ret, cpus;
 	unsigned long flags;
@@ -1137,7 +1151,8 @@ static void handle_update(struct work_struct *work)
 }
 
 /**
- *	cpufreq_out_of_sync - If actual and saved CPU frequency differs, we're in deep trouble.
+ *	cpufreq_out_of_sync - If actual and saved CPU frequency differs,
+ *	we're in deep trouble.
  *	@cpu: cpu number
  *	@old_freq: CPU frequency the kernel thinks the CPU runs at
  *	@new_freq: CPU frequency the CPU actually runs at
@@ -1624,7 +1639,7 @@ void cpufreq_unregister_governor(struct cpufreq_governor *governor)
 	for_each_present_cpu(cpu) {
 		if (cpu_online(cpu))
 			continue;
-		if (!strcmp(per_cpu(cpufreq_cpu_governor, cpu), governor->name))
+		if (!strcmp(per_cpu(cpufreq_cpu_governor,cpu),governor->name))
 			strcpy(per_cpu(cpufreq_cpu_governor, cpu), "\0");
 	}
 #endif
@@ -1738,13 +1753,15 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 
 			/* start new governor */
 			data->governor = policy->governor;
-			if (!__cpufreq_governor(data, CPUFREQ_GOV_POLICY_INIT)) {
-				if (!__cpufreq_governor(data, CPUFREQ_GOV_START)) {
+			if (!__cpufreq_governor(data,
+						CPUFREQ_GOV_POLICY_INIT)) {
+				if (!__cpufreq_governor(data,
+							CPUFREQ_GOV_START)) {
 					failed = 0;
 				} else {
 					unlock_policy_rwsem_write(policy->cpu);
 					__cpufreq_governor(data,
-							CPUFREQ_GOV_POLICY_EXIT);
+						CPUFREQ_GOV_POLICY_EXIT);
 					lock_policy_rwsem_write(policy->cpu);
 				}
 			}
@@ -1756,7 +1773,7 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 				if (old_gov) {
 					data->governor = old_gov;
 					__cpufreq_governor(data,
-							CPUFREQ_GOV_POLICY_INIT);
+						CPUFREQ_GOV_POLICY_INIT);
 					__cpufreq_governor(data,
 							   CPUFREQ_GOV_START);
 				}
@@ -1975,7 +1992,8 @@ static int __init cpufreq_core_init(void)
 		init_rwsem(&per_cpu(cpu_policy_rwsem, cpu));
 	}
 
-	cpufreq_global_kobject = kobject_create_and_add("cpufreq", &cpu_subsys.dev_root->kobj);
+	cpufreq_global_kobject = kobject_create_and_add("cpufreq",
+						&cpu_subsys.dev_root->kobj);
 	BUG_ON(!cpufreq_global_kobject);
 	register_syscore_ops(&cpufreq_syscore_ops);
 

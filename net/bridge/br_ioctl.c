@@ -103,6 +103,108 @@ static int add_del_if(struct net_bridge *br, int ifindex, int isadd)
 
 	return ret;
 }
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+
+/* Set router port ioctl request */
+static int mcast_snoop_set_router_port(struct net_bridge *br, struct ifreq *rq)
+{
+	struct router_port rp;
+	struct net_bridge_port *port;
+	struct net_device *dev;
+
+	if (!capable(CAP_NET_ADMIN))
+		return -EPERM;
+
+	if (copy_from_user((void *)&rp, rq->ifr_data, sizeof(struct router_port)))
+		return -EFAULT;
+
+	dev = dev_get_by_index(dev_net(br->dev), rp.if_index);
+	if (dev == NULL)
+		return -EINVAL;
+
+	port = br_port_get_rtnl(dev);
+   if (port == NULL) {
+		dev_put(dev);
+		return -ENODEV;
+	}
+
+	if (rp.type == IPV4) {
+		port->igmp_router_port = 1;
+		mod_timer(&port->igmp_router_timer, jiffies + rp.expires * HZ);
+	} else if (rp.type == IPV6) {
+		port->mld_router_port = 1;
+		mod_timer(&port->mld_router_timer, jiffies + rp.expires * HZ);
+	} else {
+		dev_put(dev);
+		return -EINVAL;
+	}
+
+	dev_put(dev);
+	return 0;
+}
+
+/* Add / delete multicast entry */
+static int add_del_mg_entry(struct net_bridge *br, struct ifreq *rq, int isadd)
+{
+    struct net_device *dev;
+    struct net_bridge_port *port;
+    struct br_grp_rec recbuf, *rec;
+    char *buf;
+    int nsrc = 0;
+    int ret;
+    int ifindex;
+
+    if (!capable(CAP_NET_ADMIN))
+        return -EPERM;
+
+    /* Step 1. get src count from record */
+    if (copy_from_user((void *)&recbuf, rq->ifr_data, sizeof(struct br_grp_rec)))
+        return -EFAULT;
+
+    ifindex = recbuf.if_index;
+    nsrc = recbuf.nsrc;
+
+    /* allocate buffer large enough to accommodate the src list also */
+    buf = kmalloc(sizeof(struct br_grp_rec) + nsrc * sizeof(ipaddr_t), GFP_KERNEL);
+    if(buf == NULL)
+        return -ENOMEM;
+
+    /* Step 2. now copy the entire record */
+    if (copy_from_user(buf, rq->ifr_data, sizeof(struct br_grp_rec) + nsrc * sizeof(ipaddr_t))){
+	kfree(buf);
+        return -EFAULT;
+    }
+
+    rec = (struct br_grp_rec *)buf;
+
+    dev = dev_get_by_index(dev_net(br->dev), ifindex);
+    if (dev == NULL){
+	kfree(buf);
+        return -EINVAL;
+    }
+
+    port = br_port_get_rtnl(dev);
+	
+    if (port == NULL) {
+		dev_put(dev);
+		kfree(buf);
+		return -ENODEV;
+    }
+
+   
+
+    if(isadd)
+        ret = br_mg_add_entry(port, &rec->gaddr, rec->filter_mode, rec->compat, rec->nsrc, rec->slist);
+    else
+        ret = br_mg_del_record(port, &rec->gaddr);
+
+    dev_put(dev);
+    kfree(buf);
+    return ret;
+}
+#endif /* CONFIG_LTQ_MCAST_SNOOPING */
+
+
 
 /*
  * Legacy ioctl's through SIOCDEVPRIVATE
@@ -388,6 +490,13 @@ int br_dev_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCBRADDIF:
 	case SIOCBRDELIF:
 		return add_del_if(br, rq->ifr_ifindex, cmd == SIOCBRADDIF);
+#ifdef CONFIG_LTQ_MCAST_SNOOPING
+	case SIOCBRADDMGREC:
+	case SIOCBRDELMGREC:
+		return add_del_mg_entry(br, rq, cmd == SIOCBRADDMGREC);
+	case SIOCBRSETROUTERPORT:
+		return mcast_snoop_set_router_port(br, rq);
+#endif /* CONFIG_LTQ_MCAST_SNOOPING */
 
 	}
 

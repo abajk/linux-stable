@@ -4,6 +4,7 @@
  *  by the Free Software Foundation.
  *
  *  Copyright (C) 2010 John Crispin <blogic@openwrt.org>
+ *  Copyright (C) 2013 Lei Chuanhua <chuanhua.lei@lantiq.com>
  */
 
 #include <linux/types.h>
@@ -20,10 +21,11 @@
 #include <linux/of_irq.h>
 #include <linux/of_pci.h>
 
-#include <asm/pci.h>
-#include <asm/gpio.h>
+#include <linux/pci.h>
+#include <linux/gpio.h>
 #include <asm/addrspace.h>
 
+#include <lantiq.h>
 #include <lantiq_soc.h>
 #include <lantiq_irq.h>
 
@@ -57,6 +59,7 @@
 
 #define LTQ_CGU_IFCCR		0x0018
 #define LTQ_CGU_PCICR		0x0034
+#define LTQ_PCI_RESET_DOMAIN	BIT(13)
 
 #define ltq_pci_w32(x, y)	ltq_w32((x), ltq_pci_membase + (y))
 #define ltq_pci_r32(x)		ltq_r32(ltq_pci_membase + (x))
@@ -114,19 +117,19 @@ static int ltq_pci_startup(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to get external pci clock\n");
 		return PTR_ERR(clk_external);
 	}
+	if (of_find_property(node, "lantiq,external-clock", NULL))
+		clk_enable(clk_external);
+	else
+		clk_disable(clk_external);
 
 	/* read the bus speed that we want */
 	bus_clk = of_get_property(node, "lantiq,bus-clock", NULL);
 	if (bus_clk)
 		clk_set_rate(clk_pci, *bus_clk);
 
+	ltq_hw_reset(LTQ_PCI_RESET_DOMAIN);
 	/* and enable the clocks */
 	clk_enable(clk_pci);
-	if (of_find_property(node, "lantiq,external-clock", NULL))
-		clk_enable(clk_external);
-	else
-		clk_disable(clk_external);
-
 	/* setup reset gpio used by pci */
 	reset_gpio = of_get_named_gpio(node, "gpio-reset", 0);
 	if (gpio_is_valid(reset_gpio)) {
@@ -138,6 +141,7 @@ static int ltq_pci_startup(struct platform_device *pdev)
 			return ret;
 		}
 		gpio_direction_output(reset_gpio, 1);
+		__gpio_set_value(reset_gpio, 1);
 	}
 
 	/* enable auto-switching between PCI and EBU */
@@ -203,7 +207,7 @@ static int ltq_pci_startup(struct platform_device *pdev)
 	if (gpio_is_valid(reset_gpio)) {
 		__gpio_set_value(reset_gpio, 0);
 		wmb();
-		mdelay(1);
+		mdelay(5);
 		__gpio_set_value(reset_gpio, 1);
 	}
 	return 0;

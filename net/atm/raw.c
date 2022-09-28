@@ -60,7 +60,11 @@ int atm_init_aal0(struct atm_vcc *vcc)
 {
 	vcc->push = atm_push_raw;
 	vcc->pop = atm_pop_raw;
+#ifdef CONFIG_LTQ_OAM
+	vcc->push_oam = ifx_push_oam;
+#else
 	vcc->push_oam = NULL;
+#endif
 	vcc->send = atm_send_aal0;
 	return 0;
 }
@@ -69,7 +73,11 @@ int atm_init_aal34(struct atm_vcc *vcc)
 {
 	vcc->push = atm_push_raw;
 	vcc->pop = atm_pop_raw;
+#ifdef CONFIG_LTQ_OAM
+	vcc->push_oam = ifx_push_oam;
+#else
 	vcc->push_oam = NULL;
+#endif
 	vcc->send = vcc->dev->ops->send;
 	return 0;
 }
@@ -78,7 +86,11 @@ int atm_init_aal5(struct atm_vcc *vcc)
 {
 	vcc->push = atm_push_raw;
 	vcc->pop = atm_pop_raw;
+#ifdef CONFIG_LTQ_OAM
+	vcc->push_oam = ifx_push_oam;
+#else
 	vcc->push_oam = NULL;
+#endif
 	vcc->send = vcc->dev->ops->send;
 	return 0;
 }

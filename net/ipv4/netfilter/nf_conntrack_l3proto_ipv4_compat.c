@@ -180,6 +180,11 @@ static int ct_seq_show(struct seq_file *s, void *v)
 	if (ct_show_secctx(s, ct))
 		goto release;
 
+#ifdef CONFIG_NF_CONNTRACK_EXTMARK
+	if (seq_printf(s, "extmark=%u ", ct->extmark))
+		goto release;
+#endif
+
 	if (seq_printf(s, "use=%u\n", atomic_read(&ct->ct_general.use)))
 		goto release;
 	ret = 0;

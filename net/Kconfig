@@ -80,6 +80,32 @@ config INET
 
 	  Short answer: say Y.
 
+config LANTIQ_IPQOS_CLASS_ACCELERATION_DISABLE
+	bool "IPQOS Accelration Disable Support"
+	depends on LANTIQ_IPQOS
+	help
+		Enables Enables check for 13th bit in NF-MARK and disables ppa add hook if this bit is set
+		if unsure  say N
+
+config LTQ_UDP_REDIRECT
+        bool "LTQ Kernel Packet Interface for UDP re-direction"
+        help
+          You can say Y here if you want to use hooks from kernel for
+          UDP re-direction (KPI2UDP redirection)
+
+config LANTIQ_IPQOS
+	bool "IPQOS support"
+	help
+	  Infineon IPQOS support
+
+config LANTIQ_IPQOS_MARK_SKBPRIO
+	bool "Will derive skb prio from nfmark(0-31) bits 6-9"
+	depends on LANTIQ_IPQOS
+	help
+	  Select this to to derive skb priority from nfmark.
+
+	  If unsure, say N.
+
 if INET
 source "net/ipv4/Kconfig"
 source "net/ipv6/Kconfig"
@@ -95,6 +121,13 @@ config NETWORK_SECMARK
 	help
 	  This enables security marking of network packets, similar
 	  to nfmark, but designated for security purposes.
+	  If you are unsure how to answer this question, answer N.
+
+config NETWORK_EXTMARK
+	bool "Extended Marking"
+	help
+	  This enables extended marking in sk_buff strucure. This is
+	  extension of nfmark.
 	  If you are unsure how to answer this question, answer N.
 
 config NETWORK_PHY_TIMESTAMPING
@@ -192,6 +225,27 @@ config BRIDGE_NETFILTER
 	  ebtables.
 
 	  If unsure, say N.
+
+config VLAN_8021Q
+        tristate "802.1Q VLAN Support"
+
+config VLAN_8021Q_UNTAG
+	bool "Will untag ingress vlans of routed traffics"
+	depends on VLAN_8021Q
+	help
+	Select this to accept unknown vlan as well as null vlan.
+
+	If unsure, say N.
+
+config VLAN_8021Q_GVRP
+	bool "GVRP (GARP VLAN Registration Protocol) support"
+	depends on VLAN_8021Q
+	select GARP
+	help
+	Select this to enable GVRP end-system support. GVRP is used for
+	automatic propagation of registered VLANs to switches.
+
+          If unsure, say N.
 
 source "net/netfilter/Kconfig"
 source "net/ipv4/netfilter/Kconfig"

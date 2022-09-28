@@ -321,6 +321,9 @@ struct ahci_host_priv {
 	u32			em_buf_sz;	/* EM buffer size in byte */
 	u32			em_msg_type;	/* EM message type */
 	struct clk		*clk;		/* Only for platforms supporting clk */
+
+	bool		mswap;
+	bool		snoswap;
 };
 
 extern int ahci_ignore_sss;
@@ -385,5 +388,25 @@ static inline int ahci_nr_ports(u32 cap)
 {
 	return (cap & 0x1f) + 1;
 }
+
+
+static inline unsigned int ahci_readl(__le32 __iomem *regs)
+{
+
+	#if 0
+		return swab32(readl(regs));
+	#else
+		return readl(regs);
+	#endif
+}
+static inline void ahci_writel(const unsigned int val, __le32 __iomem *regs)
+{
+	#if 0
+		writel(swab32(val), regs);
+	#else
+		writel(val, regs);
+	#endif
+}
+
 
 #endif /* _AHCI_H */

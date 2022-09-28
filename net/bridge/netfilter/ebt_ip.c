@@ -24,7 +24,7 @@ struct tcpudphdr {
 	__be16 dst;
 };
 
-static bool
+static bool __ebt_optimized 
 ebt_ip_mt(const struct sk_buff *skb, struct xt_action_param *par)
 {
 	const struct ebt_ip_info *info = par->matchinfo;

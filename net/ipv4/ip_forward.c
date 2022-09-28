@@ -39,7 +39,7 @@
 #include <net/route.h>
 #include <net/xfrm.h>
 
-static int ip_forward_finish(struct sk_buff *skb)
+static int __ipt_optimized ip_forward_finish(struct sk_buff *skb)
 {
 	struct ip_options *opt	= &(IPCB(skb)->opt);
 
@@ -52,7 +52,7 @@ static int ip_forward_finish(struct sk_buff *skb)
 	return dst_output(skb);
 }
 
-int ip_forward(struct sk_buff *skb)
+int __ipt_optimized ip_forward(struct sk_buff *skb)
 {
 	struct iphdr *iph;	/* Our header */
 	struct rtable *rt;	/* Route we use */
@@ -111,7 +111,9 @@ int ip_forward(struct sk_buff *skb)
 	if (rt->rt_flags&RTCF_DOREDIRECT && !opt->srr && !skb_sec_path(skb))
 		ip_rt_send_redirect(skb);
 
+#ifndef CONFIG_LANTIQ_IPQOS
 	skb->priority = rt_tos2priority(iph->tos);
+#endif
 
 	return NF_HOOK(NFPROTO_IPV4, NF_INET_FORWARD, skb, skb->dev,
 		       rt->dst.dev, ip_forward_finish);

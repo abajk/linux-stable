@@ -75,3 +75,11 @@ obj-$(CONFIG_SPI_TOPCLIFF_PCH)		+= spi-topcliff-pch.o
 obj-$(CONFIG_SPI_TXX9)			+= spi-txx9.o
 obj-$(CONFIG_SPI_XCOMM)		+= spi-xcomm.o
 obj-$(CONFIG_SPI_XILINX)		+= spi-xilinx.o
+obj-$(CONFIG_SPI_XWAY)			+= spi-xway.o
+
+obj-$(CONFIG_LANTIQ_SPI)               += ltq_ssc.o
+obj-$(CONFIG_LANTIQ_SPI_FLASH)         += ltq_sflash.o
+
+obj-$(CONFIG_LANTIQ_USIF_SPI)          += lantiq_usif_spi.o
+obj-$(CONFIG_LANTIQ_USIF_SPI_FLASH)    += lantiq_usif_sflash.o
+obj-$(CONFIG_LANTIQ_USIF_AT45_FLASH)   += ltqmips_usif_at45.o

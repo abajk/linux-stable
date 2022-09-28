@@ -698,7 +698,15 @@ static const struct bin_table bin_net_netfilter_table[] = {
 	{ CTL_INT,	NET_NF_CONNTRACK_FRAG6_LOW_THRESH,	"nf_conntrack_frag6_low_thresh" },
 	{ CTL_INT,	NET_NF_CONNTRACK_FRAG6_HIGH_THRESH,	"nf_conntrack_frag6_high_thresh" },
 	{ CTL_INT,	NET_NF_CONNTRACK_CHECKSUM,		"nf_conntrack_checksum" },
-
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+	{ CTL_INT,	NET_NF_CONNTRACK_LOW_PRIO_MAX,		"nf_conntrack_low_prio_max" },
+	{ CTL_INT,	NET_NF_CONNTRACK_LOW_PRIO_THRESH,	"nf_conntrack_low_prio_thresh" },
+	{ CTL_INT,	NET_NF_CONNTRACK_DEFAULT_PRIO_MAX,	"nf_conntrack_default_prio_max" },
+	{ CTL_INT,	NET_NF_CONNTRACK_DEFAULT_PRIO_THRESH,	"nf_conntrack_default_prio_thresh" },
+	{ CTL_INT,	NET_NF_CONNTRACK_LOW_PRIO_DATA_RATE,	"nf_conntrack_low_prio_data_rate" },
+	{ CTL_INT,	NET_NF_CONNTRACK_DEFAULT_PRIO_DATA_RATE,"nf_conntrack_default_prio_data_rate" },
+	{ CTL_INT,	NET_NF_CONNTRACK_SESSION_LIMIT_ENABLE,	"nf_conntrack_session_limit_enable" },
+#endif
 	{}
 };
 

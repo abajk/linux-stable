@@ -640,7 +640,11 @@ static int atm_init_atmarp(struct atm_vcc *vcc)
 	    /* allow replies and avoid getting closed if signaling dies */
 	vcc->dev = &atmarpd_dev;
 	vcc_insert_socket(sk_atm(vcc));
+#ifdef CONFIG_LTQ_OAM
+       vcc->push_oam = ifx_push_oam;
+#else
 	vcc->push = NULL;
+#endif
 	vcc->pop = NULL; /* crash */
 	vcc->push_oam = NULL; /* crash */
 	rtnl_unlock();

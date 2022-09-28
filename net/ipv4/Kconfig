@@ -640,3 +640,7 @@ config TCP_MD5SIG
 	  on the Internet.
 
 	  If unsure, say N.
+
+config LTQ_MCAST_LATENCY_OPTIMIZATION
+        bool "Lantiq Multicast Latency Optimization"
+	default y

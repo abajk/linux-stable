@@ -40,6 +40,9 @@
 #include <net/netfilter/nf_conntrack_expect.h>
 #include <net/netfilter/nf_conntrack_helper.h>
 #include <net/netfilter/nf_conntrack_core.h>
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS /* [ */
+#include <net/netfilter/nf_conntrack_session_limit.h>
+#endif
 #include <net/netfilter/nf_conntrack_extend.h>
 #include <net/netfilter/nf_conntrack_acct.h>
 #include <net/netfilter/nf_conntrack_ecache.h>
@@ -50,6 +53,11 @@
 #include <net/netfilter/nf_nat.h>
 #include <net/netfilter/nf_nat_core.h>
 #include <net/netfilter/nf_nat_helper.h>
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+  #include <net/ppa_api.h>
+  static atomic_t g_ppa_force_timeout = {0};
+#endif
 
 #define NF_CONNTRACK_VERSION	"0.5.0"
 
@@ -189,6 +197,12 @@ static void
 clean_from_lists(struct nf_conn *ct)
 {
 	pr_debug("clean_from_lists(%p)\n", ct);
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+    if ( ppa_hook_session_del_fn != NULL )
+    {
+        ppa_hook_session_del_fn(ct, PPA_F_SESSION_ORG_DIR | PPA_F_SESSION_REPLY_DIR);
+    }
+#endif
 	hlist_nulls_del_rcu(&ct->tuplehash[IP_CT_DIR_ORIGINAL].hnnode);
 	hlist_nulls_del_rcu(&ct->tuplehash[IP_CT_DIR_REPLY].hnnode);
 
@@ -196,7 +210,11 @@ clean_from_lists(struct nf_conn *ct)
 	nf_ct_remove_expectations(ct);
 }
 
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS /* [ */
+void
+#else
 static void
+#endif
 destroy_conntrack(struct nf_conntrack *nfct)
 {
 	struct nf_conn *ct = (struct nf_conn *)nfct;
@@ -207,6 +225,12 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	NF_CT_ASSERT(atomic_read(&nfct->use) == 0);
 	NF_CT_ASSERT(!timer_pending(&ct->timeout));
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+    if ( ppa_hook_session_del_fn != NULL )
+    {
+        ppa_hook_session_del_fn(ct, PPA_F_SESSION_ORG_DIR | PPA_F_SESSION_REPLY_DIR);
+    }
+#endif
 	/* To make sure we don't get any weird locking issues here:
 	 * destroy_conntrack() MUST NOT be called with a write lock
 	 * to nf_conntrack_lock!!! -HW */
@@ -244,6 +268,9 @@ destroy_conntrack(struct nf_conntrack *nfct)
 	pr_debug("destroy_conntrack: returning ct=%p to slab\n", ct);
 	nf_conntrack_free(ct);
 }
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS 
+EXPORT_SYMBOL(destroy_conntrack);
+#endif
 
 void nf_ct_delete_from_lists(struct nf_conn *ct)
 {
@@ -301,6 +328,29 @@ static void death_by_timeout(unsigned long ul_conntrack)
 {
 	struct nf_conn *ct = (void *)ul_conntrack;
 	struct nf_conn_tstamp *tstamp;
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+      /* if this function is called from within a timer interrupt then the timer
+         has actually expired. We need to make this distinction since this function 
+         is also called to remove conntrack's for various reasons other than inactivity
+         timeout */
+         
+    if ( !atomic_read(&g_ppa_force_timeout) && ppa_hook_inactivity_status_fn != NULL)
+    {
+        if ( ppa_hook_inactivity_status_fn((PPA_U_SESSION *)ct) == PPA_HIT )
+        {
+            nf_ct_refresh(ct, 0, 60 * HZ); //to check again after default seconds
+
+            if( !timer_pending(&ct->timeout) )
+            {
+                ct->timeout.expires = jiffies + 60 * HZ;
+                add_timer(&ct->timeout);
+            }
+            return;
+        }
+    }
+#endif
+
 
 	tstamp = nf_conn_tstamp_find(ct);
 	if (tstamp && tstamp->stop == 0)
@@ -650,7 +700,13 @@ static noinline int early_drop(struct net *net, unsigned int hash)
 		return dropped;
 
 	if (del_timer(&ct->timeout)) {
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        atomic_inc(&g_ppa_force_timeout);
+#endif
 		death_by_timeout((unsigned long)ct);
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+      atomic_dec(&g_ppa_force_timeout);
+#endif
 		/* Check if we indeed killed this entry. Reliable event
 		   delivery may have inserted it into the dying list. */
 		if (test_bit(IPS_DYING_BIT, &ct->status)) {
@@ -677,6 +733,84 @@ void init_nf_conntrack_hash_rnd(void)
 	cmpxchg(&nf_conntrack_hash_rnd, 0, rand);
 }
 
+//#define LTQ_IP_CONNTRACK_REPLACEMENT
+
+#undef LTQ_IP_CONNTRACK_REPLACEMENT_DEBUG
+
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT
+static inline int drop_decision(void)
+{ /*return value: 1-drop currnet nf_conn, 0-not drop current nf_conntrack */
+
+               /*Later we need to optimize here, like how to keep sip ALG,
+                * voice RTP and so on */
+               return 1;
+}
+
+
+/* Enhance : need to traverse reverse in the list , right now implementation is
+ * similiar as early_drop*/
+static int FindReplacement(struct net *net)
+{
+       /* Traverse backwards: gives us oldest, which is roughly LRU */
+       struct nf_conntrack_tuple_hash *h;
+       int dropped = 0;
+	unsigned int i;
+	struct hlist_nulls_node *n;
+       static unsigned int hash_next=0 ; //save for next replacement
+       struct nf_conn *ct = NULL, *tmp;
+
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT_DEBUG
+	printk(KERN_WARNING "iptables full:ip_conntrack_max(%d)_ip_conntrack_count(%d)_hash_next(%d)\n", nf_conntrack_max, atomic_read(&net->ct.count),hash_next );
+#endif
+       rcu_read_lock();
+
+       for (i=0; i < net->ct.htable_size; i++)  /*control loop times*/ {
+                hash_next =  (hash_next + 1) % net->ct.htable_size;
+               hlist_nulls_for_each_entry_rcu(h, n, &net->ct.hash[hash_next],hnnode)
+               {
+                       tmp = nf_ct_tuplehash_to_ctrack(h);
+                       if ((tmp != NULL) && drop_decision() && (atomic_read(&tmp->ct_general.use) == 1)) {
+                                       ct = tmp;
+                       		break;
+                       }
+		}
+
+		if (ct != NULL) 
+			break;
+        }
+
+	rcu_read_unlock();
+
+        if (!ct) {
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT_DEBUG
+                printk(KERN_WARNING "Not found replacemnet ???\n");
+#endif
+                return dropped;
+        }
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT_DEBUG
+        printk(KERN_WARNING "replace ok:%d\n", hash_next);
+#endif
+        if (del_timer(&ct->timeout)) {
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+                atomic_inc(&g_ppa_force_timeout);
+#endif
+                death_by_timeout((unsigned long)ct);
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+                atomic_dec(&g_ppa_force_timeout);
+#endif
+		if (test_bit(IPS_DYING_BIT, &ct->status)) {
+               		dropped = 1;
+			NF_CT_STAT_INC_ATOMIC(net, early_drop);
+		}
+        }
+       nf_ct_put(ct);
+        return dropped;
+}
+
+#endif
+
+
 static struct nf_conn *
 __nf_conntrack_alloc(struct net *net, u16 zone,
 		     const struct nf_conntrack_tuple *orig,
@@ -697,12 +831,24 @@ __nf_conntrack_alloc(struct net *net, u16 zone,
 	if (nf_conntrack_max &&
 	    unlikely(atomic_read(&net->ct.count) > nf_conntrack_max)) {
 		if (!early_drop(net, hash_bucket(hash, net))) {
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT
+               if( FindReplacement(net) )
+               {
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT_DEBUG
+                       printk(KERN_WARNING "inside nf_conntrack_alloc ok\n");
+#endif
+                       goto SUCCESS_REPLACEMENT;
+               }
+#endif
 			atomic_dec(&net->ct.count);
 			net_warn_ratelimited("nf_conntrack: table full, dropping packet\n");
 			return ERR_PTR(-ENOMEM);
 		}
 	}
 
+#ifdef LTQ_IP_CONNTRACK_REPLACEMENT
+SUCCESS_REPLACEMENT:
+#endif
 	/*
 	 * Do not use kmem_cache_zalloc(), as this cache uses
 	 * SLAB_DESTROY_BY_RCU.
@@ -848,6 +994,10 @@ init_conntrack(struct net *net, struct nf_conn *tmpl,
 #ifdef CONFIG_NF_CONNTRACK_SECMARK
 		ct->secmark = exp->master->secmark;
 #endif
+#ifdef CONFIG_NF_CONNTRACK_EXTMARK
+		ct->extmark = exp->master->extmark;
+#endif
+
 		nf_conntrack_get(&ct->master->ct_general);
 		NF_CT_STAT_INC(net, expect_new);
 	} else {
@@ -932,6 +1082,66 @@ resolve_normal_ct(struct net *net, struct nf_conn *tmpl,
 	skb->nfctinfo = *ctinfo;
 	return ct;
 }
+
+#if defined(CONFIG_LTQ_PPA_API_SW_FASTPATH)
+int get_conntrack_from_skb(struct sk_buff *skb, struct nf_conn **nfct, u_int8_t *set_reply)
+{
+
+	u_int8_t protonum,pf=PF_INET;
+	int ret=1;
+	unsigned int dataoff;
+	enum ip_conntrack_info ctinfo;
+        struct nf_conn *ct, *tmpl = NULL; 
+	struct nf_conntrack_tuple tuple;
+	struct nf_conntrack_tuple_hash *h;
+        struct nf_conntrack_l3proto *l3proto;
+	struct nf_conntrack_l4proto *l4proto;
+        struct net_device *netdev=skb->dev;
+        skb->network_header = skb->data;
+        u16 zone;
+ 
+	if (skb->nfct) {
+		tmpl = (struct nf_conn *)skb->nfct;
+	}
+	zone = tmpl ? nf_ct_zone(tmpl) : NF_CT_DEFAULT_ZONE;
+ 
+	l3proto = __nf_ct_l3proto_find(pf);
+	ret = l3proto->get_l4proto(skb, 0, &dataoff, &protonum);
+	if (ret <= 0) {
+		return ret;
+        }
+
+	l4proto = __nf_ct_l4proto_find(pf, protonum);
+	if (l4proto->error != NULL) {
+		ret = l4proto->error(dev_net(netdev), tmpl, skb, 
+			dataoff, &ctinfo, pf, NF_INET_PRE_ROUTING);
+		if (ret <= 0) {
+			return ret;
+		}
+	}
+
+	if (!nf_ct_get_tuple(skb, skb_network_offset(skb),
+			     dataoff, AF_INET, protonum, &tuple, l3proto,
+			     l4proto)) {
+		pr_debug("Can't get tuple\n");
+		return -1;
+	}
+
+	h = nf_conntrack_find_get(dev_net(netdev), zone, &tuple);
+	if (!h) {
+		pr_debug("Can't get ct from tuple\n");
+		return -1;
+	}
+	ct = nf_ct_tuplehash_to_ctrack(h);
+	*nfct=ct;
+	if (NF_CT_DIRECTION(h) == IP_CT_DIR_REPLY) {
+		*set_reply = 1;
+	}
+
+	return 1;
+} 
+EXPORT_SYMBOL(get_conntrack_from_skb);
+#endif
 
 unsigned int
 nf_conntrack_in(struct net *net, u_int8_t pf, unsigned int hooknum,
@@ -1025,6 +1235,19 @@ nf_conntrack_in(struct net *net, u_int8_t pf, unsigned int hooknum,
 
 	if (set_reply && !test_and_set_bit(IPS_SEEN_REPLY_BIT, &ct->status))
 		nf_conntrack_event_cache(IPCT_REPLY, ct);
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        if ( ret == NF_ACCEPT && ct != NULL && ppa_hook_session_add_fn != NULL )
+        {
+            uint32_t flags;
+    
+            flags = PPA_F_BEFORE_NAT_TRANSFORM;
+            flags |= CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL ? PPA_F_SESSION_ORG_DIR : PPA_F_SESSION_REPLY_DIR;
+    
+            ppa_hook_session_add_fn(skb, ct, flags);
+        }
+#endif
+
 out:
 	if (tmpl) {
 		/* Special case: we have to repeat this hook, assign the
@@ -1115,6 +1338,14 @@ acct:
 			atomic64_add(skb->len, &acct[CTINFO2DIR(ctinfo)].bytes);
 		}
 	}
+
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+    if ( ppa_hook_set_inactivity_fn != NULL )
+    {
+        ppa_hook_set_inactivity_fn((PPA_U_SESSION *)ct, extra_jiffies / HZ);
+    }
+#endif
+
 }
 EXPORT_SYMBOL_GPL(__nf_ct_refresh_acct);
 
@@ -1256,6 +1487,10 @@ void nf_ct_iterate_cleanup(struct net *net,
 	struct nf_conn *ct;
 	unsigned int bucket = 0;
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        atomic_inc(&g_ppa_force_timeout);
+#endif
+
 	while ((ct = get_next_corpse(net, iter, data, &bucket)) != NULL) {
 		/* Time to push up daises... */
 		if (del_timer(&ct->timeout))
@@ -1264,6 +1499,10 @@ void nf_ct_iterate_cleanup(struct net *net,
 
 		nf_ct_put(ct);
 	}
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        atomic_dec(&g_ppa_force_timeout);
+#endif
+
 }
 EXPORT_SYMBOL_GPL(nf_ct_iterate_cleanup);
 

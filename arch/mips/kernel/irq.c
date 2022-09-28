@@ -138,7 +138,11 @@ static inline void check_stack_overflow(void) {}
  * SMP cross-CPU interrupts have their own specific
  * handlers).
  */
+#ifdef CONFIG_LTQ_SYS_OPT
+void __system __irq_entry do_IRQ(unsigned int irq)
+#else
 void __irq_entry do_IRQ(unsigned int irq)
+#endif
 {
 	irq_enter();
 	check_stack_overflow();

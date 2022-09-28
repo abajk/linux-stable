@@ -340,7 +340,7 @@ ipt_handle_default_rule(struct ipt_entry *e, unsigned int *verdict)
 }
 
 /* Returns one of the generic firewall policies, like NF_ACCEPT. */
-unsigned int
+unsigned int __ipt_optimized 
 ipt_do_table(struct sk_buff *skb,
 	     unsigned int hook,
 	     const struct net_device *in,

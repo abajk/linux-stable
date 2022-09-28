@@ -1083,8 +1083,13 @@ static int vpe_open(struct inode *inode, struct file *filp)
 	v->load_addr = NULL;
 	v->len = 0;
 
+#ifdef CONFIG_UIDGID_STRICT_TYPE_CHECKS
+	v->uid = filp->f_cred->fsuid.val;
+	v->gid = filp->f_cred->fsgid.val;
+#else
 	v->uid = filp->f_cred->fsuid;
 	v->gid = filp->f_cred->fsgid;
+#endif
 
 	v->cwd[0] = 0;
 	ret = getcwd(v->cwd, VPE_PATH_MAX);
@@ -1482,6 +1487,8 @@ static int __init vpe_module_init(void)
 			}
 
 			v->ntcs = hw_tcs - tclimit;
+
+                       write_tc_c0_tcbind((read_tc_c0_tcbind() & ~TCBIND_CURVPE) | 1);
 
 			/* add the tc to the list of this vpe's tc's. */
 			list_add(&t->tc, &v->tc);

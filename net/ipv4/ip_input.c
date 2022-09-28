@@ -308,7 +308,7 @@ drop:
 int sysctl_ip_early_demux __read_mostly = 1;
 EXPORT_SYMBOL(sysctl_ip_early_demux);
 
-static int ip_rcv_finish(struct sk_buff *skb)
+static int __ipt_optimized ip_rcv_finish(struct sk_buff *skb)
 {
 	const struct iphdr *iph = ip_hdr(skb);
 	struct rtable *rt;
@@ -372,7 +372,7 @@ drop:
 /*
  * 	Main IP Receive routine.
  */
-int ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
+int __ipt_optimized ip_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 {
 	const struct iphdr *iph;
 	u32 len;

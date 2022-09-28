@@ -251,6 +251,7 @@ config LANTIQ
 	select USE_OF
 	select PINCTRL
 	select PINCTRL_LANTIQ
+	select CPU_SUPPORTS_CPUFREQ
 
 config LASAT
 	bool "LASAT Networks platforms"
@@ -1733,6 +1734,24 @@ config HARDWARE_WATCHPOINTS
 
 menu "Kernel type"
 
+config LTQ
+	bool "Enable LTQ enhancements"
+	default y
+	help
+	Enables all config options and features added by LTQ.
+
+config LTQ_SYS_OPT
+	bool "LTQ sys optimization"
+	depends on LTQ
+	help
+	Enbaling this feature improves the networking performance
+	due to LTQ enhancements to IRQ scheduling.
+
+config LTQ_OPTIMIZATION
+	bool "Kernel LTQ optimizations"
+	help
+	Kernel LTQ optimizations
+
 choice
 	prompt "Kernel code model"
 	help
@@ -2599,7 +2618,7 @@ endmenu
 config MIPS_EXTERNAL_TIMER
 	bool
 
-if CPU_SUPPORTS_CPUFREQ && MIPS_EXTERNAL_TIMER
+if CPU_SUPPORTS_CPUFREQ
 menu "CPU Power Management"
 source "drivers/cpufreq/Kconfig"
 endmenu

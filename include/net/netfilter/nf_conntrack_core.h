@@ -40,6 +40,9 @@ extern void nf_conntrack_cleanup_start(void);
 
 extern void nf_conntrack_init_end(void);
 extern void nf_conntrack_cleanup_end(void);
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+extern void destroy_conntrack(struct nf_conntrack *nfct);
+#endif
 
 extern bool
 nf_ct_get_tuple(const struct sk_buff *skb,

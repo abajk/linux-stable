@@ -12,7 +12,7 @@
 #include <linux/netfilter_bridge/ebtables.h>
 #include <linux/netfilter_bridge/ebt_mark_m.h>
 
-static bool
+static bool __ebt_optimized 
 ebt_mark_mt(const struct sk_buff *skb, struct xt_action_param *par)
 {
 	const struct ebt_mark_m_info *info = par->matchinfo;

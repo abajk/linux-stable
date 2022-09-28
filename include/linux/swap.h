@@ -156,7 +156,12 @@ enum {
 	SWP_SCANNING	= (1 << 8),	/* refcount in scan_swap_map */
 };
 
+#ifdef CONFIG_LTQ_OPTIMIZATION
+#define SWAP_CLUSTER_MAX 8UL
+#else
 #define SWAP_CLUSTER_MAX 32UL
+#endif
+
 #define COMPACT_CLUSTER_MAX SWAP_CLUSTER_MAX
 
 /*

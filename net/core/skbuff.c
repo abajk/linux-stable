@@ -3114,6 +3114,34 @@ void __init skb_init(void)
 						NULL);
 }
 
+#ifdef CONFIG_LANTIQ_IPQOS_MARK_SKBPRIO
+
+/*
+ * Function to mark priority based on specific criteria
+ */
+int skb_mark_priority(struct sk_buff *skb)
+{
+        unsigned old_priority=skb->priority;
+        /*
+         * IPQoS in UGW: added copy of nfmark set in classifier to skb->priority to be used in hardware queues
+         */
+        /* nfmark range = 1-8 if QoS is enabled; priority range = 0-7; else preserve original priority */
+#ifdef CONFIG_NETWORK_EXTMARK
+	if(skb->extmark)
+	{
+		unsigned value;
+		GET_DATA_FROM_MARK_OPT(skb->extmark, QUEPRIO_MASK, QUEPRIO_START_BIT_POS, value);
+		if (value)
+			skb->priority = value - 1;
+	}
+#endif
+
+        return (old_priority);
+}
+EXPORT_SYMBOL(skb_mark_priority);
+
+#endif
+
 /**
  *	skb_to_sgvec - Fill a scatter-gather list from a socket buffer
  *	@skb: Socket buffer containing the buffers to be mapped

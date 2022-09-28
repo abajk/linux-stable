@@ -1829,3 +1829,12 @@ config ASN1
 	  functions to call on what tags.
 
 source "kernel/Kconfig.locks"
+
+config LTQ_LIST_PREFETCH
+	bool
+	default y
+	help
+	  This macro adds prefetch instruction in some frequently used 
+	  list manipulating macros. Experiment shows around 7-10% 
+	  increase in network throughput for cpu bound routing traffic.
+

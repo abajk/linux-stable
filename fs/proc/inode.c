@@ -129,7 +129,20 @@ static const struct super_operations proc_sops = {
 	.remount_fs	= proc_remount,
 	.show_options	= proc_show_options,
 };
+static void __pde_users_dec(struct proc_dir_entry *pde)
+{
+        pde->pde_users--;
+        if (pde->pde_unload_completion && pde->pde_users == 0)
+                complete(pde->pde_unload_completion);
+}  
 
+void pde_users_dec(struct proc_dir_entry *pde)
+{       
+        spin_lock(&pde->pde_unload_lock);
+        __pde_users_dec(pde);
+        spin_unlock(&pde->pde_unload_lock);
+}               
+                        
 enum {BIAS = -1U<<31};
 
 static inline int use_pde(struct proc_dir_entry *pde)

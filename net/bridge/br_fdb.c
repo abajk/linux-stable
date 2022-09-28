@@ -11,6 +11,7 @@
  *	2 of the License, or (at your option) any later version.
  */
 
+#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/rculist.h>
@@ -26,6 +27,9 @@
 #include <linux/if_vlan.h>
 #include "br_private.h"
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+  #include <net/ppa_api.h>
+#endif
 static struct kmem_cache *br_fdb_cache __read_mostly;
 static int fdb_insert(struct net_bridge *br, struct net_bridge_port *source,
 		      const unsigned char *addr, u16 vid);
@@ -84,6 +88,10 @@ static void fdb_rcu_free(struct rcu_head *head)
 
 static void fdb_delete(struct net_bridge *br, struct net_bridge_fdb_entry *f)
 {
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+    if ( ppa_hook_bridge_entry_delete_fn != NULL )
+        ppa_hook_bridge_entry_delete_fn(f->addr.addr, 0);
+#endif
 	hlist_del_rcu(&f->hlist);
 	fdb_notify(br, f, RTM_DELNEIGH);
 	call_rcu(&f->rcu, fdb_rcu_free);
@@ -183,6 +191,19 @@ void br_fdb_cleanup(unsigned long _data)
 
 		hlist_for_each_entry_safe(f, n, &br->hash[i], hlist) {
 			unsigned long this_timer;
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+            if ( ppa_hook_bridge_entry_hit_time_fn != NULL && !f->is_local )
+            {
+                uint32_t last_hit_time;
+
+                if ( ppa_hook_bridge_entry_hit_time_fn(f->addr.addr, &last_hit_time) == PPA_HIT )
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+                f->ageing_timer = last_hit_time * HZ;
+#else
+                f->updated = last_hit_time * HZ;
+#endif
+            }
+#endif
 			if (f->is_static)
 				continue;
 			this_timer = f->updated + delay;
@@ -260,7 +281,7 @@ void br_fdb_delete_by_port(struct net_bridge *br,
 }
 
 /* No locking or refcounting, assumes caller has rcu_read_lock */
-struct net_bridge_fdb_entry *__br_fdb_get(struct net_bridge *br,
+struct net_bridge_fdb_entry * __ebt_optimized __br_fdb_get(struct net_bridge *br,
 					  const unsigned char *addr,
 					  __u16 vid)
 {
@@ -446,7 +467,7 @@ int br_fdb_insert(struct net_bridge *br, struct net_bridge_port *source,
 	return ret;
 }
 
-void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
+void __ebt_optimized br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
 		   const unsigned char *addr, u16 vid)
 {
 	struct hlist_head *head = &br->hash[br_mac_hash(addr, vid)];
@@ -484,6 +505,10 @@ void br_fdb_update(struct net_bridge *br, struct net_bridge_port *source,
 		/* else  we lose race and someone else inserts
 		 * it first, don't bother updating
 		 */
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        if ( ppa_hook_bridge_entry_add_fn != NULL && source->dev )
+            ppa_hook_bridge_entry_add_fn((unsigned char *)addr, source->dev, 0);
+#endif
 		spin_unlock(&br->hash_lock);
 	}
 }

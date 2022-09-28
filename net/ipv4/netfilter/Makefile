@@ -23,6 +23,8 @@ obj-$(CONFIG_NF_DEFRAG_IPV4) += nf_defrag_ipv4.o
 obj-$(CONFIG_NF_NAT_H323) += nf_nat_h323.o
 obj-$(CONFIG_NF_NAT_PPTP) += nf_nat_pptp.o
 obj-$(CONFIG_NF_NAT_SNMP_BASIC) += nf_nat_snmp_basic.o
+obj-$(CONFIG_NF_NAT_RTSP) += nf_nat_rtsp.o
+obj-$(CONFIG_NF_NAT_MMS) += nf_nat_mms.o
 
 # NAT protocols (nf_nat)
 obj-$(CONFIG_NF_NAT_PROTO_GRE) += nf_nat_proto_gre.o
@@ -40,6 +42,8 @@ obj-$(CONFIG_IP_NF_SECURITY) += iptable_security.o
 # matches
 obj-$(CONFIG_IP_NF_MATCH_AH) += ipt_ah.o
 obj-$(CONFIG_IP_NF_MATCH_RPFILTER) += ipt_rpfilter.o
+obj-$(CONFIG_IP_NF_MATCH_WEBSTR) += ipt_webstr.o
+obj-$(CONFIG_IP_NF_MATCH_SYNFLOOD) += ipt_synflood.o
 
 # targets
 obj-$(CONFIG_IP_NF_TARGET_CLUSTERIP) += ipt_CLUSTERIP.o
@@ -47,6 +51,7 @@ obj-$(CONFIG_IP_NF_TARGET_ECN) += ipt_ECN.o
 obj-$(CONFIG_IP_NF_TARGET_MASQUERADE) += ipt_MASQUERADE.o
 obj-$(CONFIG_IP_NF_TARGET_REJECT) += ipt_REJECT.o
 obj-$(CONFIG_IP_NF_TARGET_ULOG) += ipt_ULOG.o
+obj-$(CONFIG_IP_NF_TARGET_TRIGGER) += ipt_TRIGGER.o
 
 # generic ARP tables
 obj-$(CONFIG_IP_NF_ARPTABLES) += arp_tables.o

@@ -65,6 +65,31 @@ struct xt_mtchk_param {
 };
 
 /**
+ * struct xt_match_param - parameters for match extensions' match functions
+ *
+ * @in:		input netdevice
+ * @out:	output netdevice
+ * @match:	struct xt_match through which this function was invoked
+ * @matchinfo:	per-match data
+ * @fragoff:	packet is a fragment, this is the data offset
+ * @thoff:	position of transport header relative to skb->data
+ * @hook:	hook number given packet came from
+ * @family:	Actual NFPROTO_* through which the function is invoked
+ * 		(helpful when match->family == NFPROTO_UNSPEC)
+ * @hotdrop:	drop packet if we had inspection problems
+ */
+struct xt_match_param {
+	const struct net_device *in, *out;
+	const struct xt_match *match;
+	const void *matchinfo;
+	int fragoff;
+	unsigned int thoff;
+	unsigned int hooknum;
+	u_int8_t family;
+	bool *hotdrop;
+};
+
+/**
  * struct xt_mdtor_param - match destructor parameters
  * Fields as above.
  */

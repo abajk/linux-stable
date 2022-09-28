@@ -68,7 +68,7 @@ static void xhci_common_hub_descriptor(struct xhci_hcd *xhci,
 	temp |= HUB_CHAR_INDV_PORT_OCPM;
 	/* Bits 6:5 - no TTs in root ports */
 	/* Bit  7 - no port indicators */
-	desc->wHubCharacteristics = cpu_to_le16(temp);
+	desc->wHubCharacteristics = cpu_to_le16(temp);//ltq_h: always swap
 }
 
 /* Fill in the USB 2.0 roothub descriptor */
@@ -152,7 +152,7 @@ static void xhci_usb3_hub_descriptor(struct usb_hcd *hcd, struct xhci_hcd *xhci,
 			port_removable |= 1 << (i + 1);
 	}
 
-	desc->u.ss.DeviceRemovable = cpu_to_le16(port_removable);
+	desc->u.ss.DeviceRemovable = cpu_to_le16(port_removable);//ltq_h: always swap
 }
 
 static void xhci_hub_descriptor(struct usb_hcd *hcd, struct xhci_hcd *xhci,
@@ -696,7 +696,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		if (bus_state->port_c_suspend & (1 << wIndex))
 			status |= 1 << USB_PORT_FEAT_C_SUSPEND;
 		xhci_dbg(xhci, "Get port status returned 0x%x\n", status);
-		put_unaligned(cpu_to_le32(status), (__le32 *) buf);
+		put_unaligned(cpu_to_le32(status), (__le32 *) buf);//ltq_h: always swap
 		break;
 	case SetPortFeature:
 		if (wValue == USB_PORT_FEAT_LINK_STATE)
@@ -729,7 +729,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			}
 			/* In spec software should not attempt to suspend
 			 * a port unless the port reports that it is in the
-			 * enabled (PED = ‘1’,PLS < ‘3’) state.
+			 * enabled (PED = ????PLS < ???? state.
 			 */
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			if ((temp & PORT_PE) == 0 || (temp & PORT_RESET)

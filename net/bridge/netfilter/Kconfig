@@ -14,6 +14,14 @@ menuconfig BRIDGE_NF_EBTABLES
 if BRIDGE_NF_EBTABLES
 
 #
+# Optimization
+#
+config LTQ_IPQOS_EBT_OPT
+	bool "LTQ Ebtables Optimizations"
+	depends on  BRIDGE && BRIDGE_NF_EBTABLES
+	help
+	  If selected, ebtables & bridge basic codes are put in same cache section.
+#
 # tables
 #
 config BRIDGE_EBT_BROUTE
@@ -34,6 +42,20 @@ config BRIDGE_EBT_T_FILTER
 	  ebtables(8).
 
 	  To compile it as a module, choose M here.  If unsure, say N.
+
+config LTQ_IPQOS_BRIDGE_EBT_T_FILTER_INPUT
+	bool "ebt: filter table input hook support"
+	depends on BRIDGE_EBT_T_FILTER
+	default y
+	help
+	  Option whether you want to enable/disable ebt filter input hook.
+
+config LTQ_IPQOS_BRIDGE_EBT_T_FILTER_OUTPUT
+	bool "ebt: filter table output hook support"
+	depends on BRIDGE_EBT_T_FILTER
+	default y
+	help
+	  Option whether you want to enable/disable ebt filter output hook.
 
 config BRIDGE_EBT_T_NAT
 	tristate "ebt: nat table support"
@@ -107,6 +129,16 @@ config BRIDGE_EBT_MARK
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 
+config BRIDGE_EBT_EXTMARK
+	tristate "ebt: extmark filter support"
+	help
+	  This option adds the extmark match, which allows matching frames based on
+	  the 'extmark' value in the frame. This can be set by the extmark target.
+	  This value is the same as the one used in the iptables mark match and
+	  target.
+
+	  To compile it as a module, choose M here.  If unsure, say N.
+
 config BRIDGE_EBT_PKTTYPE
 	tristate "ebt: packet type filter support"
 	help
@@ -157,6 +189,16 @@ config BRIDGE_EBT_MARK_T
 	help
 	  This option adds the mark target, which allows marking frames by
 	  setting the 'nfmark' value in the frame.
+	  This value is the same as the one used in the iptables mark match and
+	  target.
+
+	  To compile it as a module, choose M here.  If unsure, say N.
+
+config BRIDGE_EBT_EXTMARK_T
+	tristate "ebt: extmark target support"
+	help
+	  This option adds the extmark target, which allows marking frames by
+	  setting the 'extmark' value in the frame.
 	  This value is the same as the one used in the iptables mark match and
 	  target.
 

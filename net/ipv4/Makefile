@@ -13,6 +13,9 @@ obj-y     := route.o inetpeer.o protocol.o \
 	     fib_frontend.o fib_semantics.o fib_trie.o \
 	     inet_fragment.o ping.o
 
+ifneq ($(CONFIG_LTQ_UDP_REDIRECT),)
+obj-$(CONFIG_LTQ_UDP_REDIRECT) += udp_redirect_symb.o
+endif
 obj-$(CONFIG_NET_IP_TUNNEL) += ip_tunnel.o
 obj-$(CONFIG_SYSCTL) += sysctl_net_ipv4.o
 obj-$(CONFIG_PROC_FS) += proc.o

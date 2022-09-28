@@ -134,6 +134,13 @@ fw-shipped-$(CONFIG_USB_SERIAL_KEYSPAN_PDA) += keyspan_pda/keyspan_pda.fw
 fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
+ifdef CONFIG_XRX200_PHY_FW
+fw-shipped-$(CONFIG_SOC_XWAY) += lantiq/vr9_phy11g_a1x.bin
+fw-shipped-$(CONFIG_SOC_XWAY) += lantiq/vr9_phy11g_a2x.bin
+fw-shipped-$(CONFIG_SOC_XWAY) += lantiq/vr9_phy22f_a1x.bin
+fw-shipped-$(CONFIG_SOC_XWAY) += lantiq/ltq_fw_PHY22F_IP_1v5_xRx3xx_A21_RC434.bin
+fw-shipped-$(CONFIG_SOC_XWAY) += lantiq/ltq_fw_PHY11G_IP_1v5_xRx3xx_A21_R8434.bin
+endif
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)

@@ -72,3 +72,6 @@ obj-$(CONFIG_USB_CDC_PHONET)   += usb/
 
 obj-$(CONFIG_HYPERV_NET) += hyperv/
 obj-$(CONFIG_NTB_NETDEV) += ntb_netdev.o
+obj-$(CONFIG_LTQ_PTM)	 += lantiq_ptm/
+
+obj-$(CONFIG_LTQ_PPA) += lantiq_ppa/

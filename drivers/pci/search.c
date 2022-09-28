@@ -17,6 +17,30 @@
 DECLARE_RWSEM(pci_bus_sem);
 EXPORT_SYMBOL_GPL(pci_bus_sem);
 
+#if defined(CONFIG_PCIE_LANTIQ)
+static DEFINE_SPINLOCK(pci_bus_spinlock);
+static unsigned long pci_bus_lock_flags;
+#endif /* CONFIG_LANTIQ_PCIE */
+
+static void pci_bus_lock(void)
+{
+#if defined(CONFIG_PCIE_LANTIQ)
+	spin_lock_irqsave(&pci_bus_spinlock, pci_bus_lock_flags);
+#else
+	WARN_ON(in_interrupt());
+	down_read(&pci_bus_sem);
+#endif
+}
+
+static void pci_bus_unlock(void)
+{
+#if defined(CONFIG_PCIE_LANTIQ)
+	spin_unlock_irqrestore(&pci_bus_spinlock, pci_bus_lock_flags);
+#else
+	WARN_ON(in_interrupt());
+	up_read(&pci_bus_sem);
+#endif
+}
 /*
  * find the upstream PCIe-to-PCI bridge of a PCI device
  * if the device is PCIE, return NULL
@@ -117,6 +141,30 @@ pci_find_next_bus(const struct pci_bus *from)
 }
 
 /**
+ * pci_find_preexist_bus_nr - find the maximum bus number before the current bus
+ * @from: the current bus number.
+ *
+ * Iterates through the list of known PCI busses and return the maximum bus number
+ * in front of the current bus.
+ */
+int pci_find_preexist_bus_nr(const struct pci_bus *from)
+{
+	struct pci_bus *bus = NULL;
+	int max = 0; /* If only one host controller existed */
+
+	pci_bus_lock();
+	list_for_each_entry(bus, &pci_root_buses, node) {
+		if (bus->sysdata == from->sysdata) { /* Hit the same host controller,skip */
+		break;
+		}
+		max = pci_bus_max_busnr(bus) + 1;
+	}
+	pci_bus_unlock();
+	return max;
+}
+EXPORT_SYMBOL(pci_find_preexist_bus_nr);
+
+/**
  * pci_get_slot - locate PCI device for a given PCI slot
  * @bus: PCI bus on which desired PCI device resides
  * @devfn: encodes number of PCI slot in which the desired PCI 
@@ -134,8 +182,7 @@ struct pci_dev *pci_get_slot(struct pci_bus *bus, unsigned int devfn)
 {
 	struct pci_dev *dev;
 
-	WARN_ON(in_interrupt());
-	down_read(&pci_bus_sem);
+	pci_bus_lock();
 
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		if (dev->devfn == devfn)
@@ -145,7 +192,7 @@ struct pci_dev *pci_get_slot(struct pci_bus *bus, unsigned int devfn)
 	dev = NULL;
  out:
 	pci_dev_get(dev);
-	up_read(&pci_bus_sem);
+	pci_bus_unlock();
 	return dev;
 }
 

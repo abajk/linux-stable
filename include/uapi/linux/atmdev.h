@@ -98,13 +98,15 @@ struct atm_dev_stats {
 					/* set backend handler */
 #define ATM_NEWBACKENDIF _IOW('a',ATMIOC_SPECIAL+3,atm_backend_t)
 					/* use backend to make new if */
-#define ATM_ADDPARTY  	_IOW('a', ATMIOC_SPECIAL+4,struct atm_iobuf)
+#define ATM_ADDPARTY  	_IOW('a', ATMIOC_SPECIAL+5,struct atm_iobuf)
  					/* add party to p2mp call */
+#define ATM_DELBACKENDIF _IOW('a',ATMIOC_SPECIAL+4,atm_backend_t)
+                                       /* set backend to remove if */
 #ifdef CONFIG_COMPAT
 /* It actually takes struct sockaddr_atmsvc, not struct atm_iobuf */
-#define COMPAT_ATM_ADDPARTY  	_IOW('a', ATMIOC_SPECIAL+4,struct compat_atm_iobuf)
+#define COMPAT_ATM_ADDPARTY  	_IOW('a', ATMIOC_SPECIAL+5,struct compat_atm_iobuf)
 #endif
-#define ATM_DROPPARTY 	_IOW('a', ATMIOC_SPECIAL+5,int)
+#define ATM_DROPPARTY 	_IOW('a', ATMIOC_SPECIAL+6,int)
 					/* drop party from p2mp call */
 
 /*

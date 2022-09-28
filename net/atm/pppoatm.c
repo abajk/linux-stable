@@ -390,6 +390,9 @@ static const struct ppp_channel_ops pppoatm_ops = {
 	.ioctl = pppoatm_devppp_ioctl,
 };
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+extern void (*ppa_hook_mpoa_setup)(struct atm_vcc *, int, int);
+#endif
 static int pppoatm_assign_vcc(struct atm_vcc *atmvcc, void __user *arg)
 {
 	struct atm_backend_ppp be;
@@ -431,7 +434,11 @@ static int pppoatm_assign_vcc(struct atm_vcc *atmvcc, void __user *arg)
 	atmvcc->user_back = pvcc;
 	atmvcc->push = pppoatm_push;
 	atmvcc->pop = pppoatm_pop;
-	atmvcc->release_cb = pppoatm_release_cb;
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+    if ( ppa_hook_mpoa_setup )
+        ppa_hook_mpoa_setup(atmvcc, 2, pvcc->encaps == e_llc ? 1 : 0);  //  PPPoA
+#endif
+   atmvcc->release_cb = pppoatm_release_cb;
 	__module_get(THIS_MODULE);
 	atmvcc->owner = THIS_MODULE;
 
@@ -492,6 +499,76 @@ static void __exit pppoatm_exit(void)
 	deregister_atm_ioctl(&pppoatm_ioctl_ops);
 }
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+
+extern int32_t ppa_ppp_get_info(struct net_device *ppp_dev, uint32_t ppp_info_id, void *value);
+
+enum{
+	PPA_PPPOA_GET_VCC = 1,
+	PPA_PPPOA_CHECK_IFACE,
+};
+
+int32_t ppa_get_pppoa_info(struct net_device *dev, void *pvcc, uint32_t pppoa_id, void *value)
+{
+	struct atm_vcc **patmvcc = (struct atm_vcc **)value;
+    struct pppoatm_vcc *p_atm_vcc = (struct pppoatm_vcc *)pvcc;
+
+	if(!p_atm_vcc){
+		return -1;
+	}
+
+	if(p_atm_vcc->chan.private != pvcc){
+		return -1;
+	}
+	
+	switch(pppoa_id){
+		case PPA_PPPOA_GET_VCC:
+			* patmvcc = p_atm_vcc->atmvcc;
+			break;
+
+		case PPA_PPPOA_CHECK_IFACE:
+			break;
+
+		default:
+			break;
+	}
+
+	return 0;
+}
+
+int32_t ppa_pppoa_get_vcc(struct net_device *dev, struct atm_vcc **patmvcc)
+{
+    uint32_t id = (PPA_PPPOA_GET_VCC << PPA_PPP_MASK_LEN) | PPA_PPPOA_ID;
+
+	return ppa_ppp_get_info(dev, id, (void *) patmvcc);
+
+}
+
+int32_t ppa_if_is_pppoa(struct net_device *dev, char *ifname)
+{
+    uint32_t id = (PPA_PPPOA_CHECK_IFACE << PPA_PPP_MASK_LEN) | PPA_PPPOA_ID;
+
+    if ( !dev )
+    {
+        dev = dev_get_by_name(&init_net,ifname);
+        if ( dev )
+            dev_put(dev);
+        else{
+            return 0;   //  can not get
+        }
+    }
+
+    if(ppa_ppp_get_info(dev, id, &id) >= 0){
+		return 1;
+    }
+
+	return 0;
+}
+
+EXPORT_SYMBOL(ppa_get_pppoa_info);
+EXPORT_SYMBOL(ppa_pppoa_get_vcc);
+EXPORT_SYMBOL(ppa_if_is_pppoa);
+#endif
 module_init(pppoatm_init);
 module_exit(pppoatm_exit);
 

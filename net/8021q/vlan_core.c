@@ -5,6 +5,64 @@
 #include <linux/export.h>
 #include "vlan.h"
 
+#if defined(CONFIG_LTQ_ETH_OAM) || defined(CONFIG_LTQ_ETH_OAM_MODULE)
+/* Support for ethernet OAM with VLAN */
+#include <net/ltq_eth_oam_handler.h>
+#endif
+
+#ifdef CONFIG_VLAN_8021Q_UNTAG
+void rem_vlan_tag(struct sk_buff *skb)
+{
+	unsigned char *rawp = NULL;
+
+	rcu_read_lock();
+
+	if (skb->pkt_type == PACKET_OTHERHOST) {
+		/* Our lower layer thinks this is not local, let's make sure.
+		 * This allows the bridge to have a different MAC than the underlying
+		 * device, and still route correctly.
+		 */
+		if (compare_ether_addr(eth_hdr(skb)->h_dest, skb->dev->dev_addr)) {
+			skb->pkt_type = PACKET_HOST;
+		}
+	}
+	
+#ifdef VLAN_DEBUG
+	printk("%s: packet_type: %d encap_proto: %x", __func__, skb->pkt_type, skb->protocol);
+#endif
+	rawp = skb->data;
+
+	if (ntohs(skb->protocol) >= ETH_P_802_3_MIN) {
+		rcu_read_unlock();
+		return;
+	}
+	else if (*(unsigned short *)rawp == 0xFFFF) {
+	/*
+	 * This is a magic hack to spot IPX packets. Older Novell breaks
+	 * the protocol design and runs IPX over 802.3 without an 802.2 LLC
+	 * layer. We look for FFFF which isn't a used 802.2 SSAP/DSAP. This
+	 * won't work for fault tolerant netware but does for the rest.
+	 */
+#ifdef VLAN_DEBUG
+	printk("\n To be Handled By Layer ETH_P_802_3 protocol\n");
+#endif
+		skb->protocol = __constant_htons(ETH_P_802_3);
+	}
+	else{
+	 /*
+	 	*	Real 802.2 LLC
+	 	*/
+#ifdef VLAN_DEBUG
+		printk("\n To be Handled By Layer ETH_P_802_2 protocol\n");
+#endif
+		skb->protocol = __constant_htons(ETH_P_802_2);
+	}
+
+	rcu_read_unlock();
+	return;
+}
+#endif
+
 bool vlan_do_receive(struct sk_buff **skbp)
 {
 	struct sk_buff *skb = *skbp;
@@ -12,14 +70,42 @@ bool vlan_do_receive(struct sk_buff **skbp)
 	u16 vlan_id = vlan_tx_tag_get_id(skb);
 	struct net_device *vlan_dev;
 	struct vlan_pcpu_stats *rx_stats;
+#ifdef CONFIG_VLAN_8021Q_UNTAG
+	bool tag_remove = false;
+#endif
 
 	vlan_dev = vlan_find_dev(skb->dev, vlan_proto, vlan_id);
-	if (!vlan_dev)
-		return false;
+	if (!vlan_dev) {
+#ifdef VLAN_DEBUG
+		printk("%s: ERROR: No net_device for VID: %i on dev: %s [%i]\n",
+				__FUNCTION__, (unsigned int)(vlan_id), skb->dev->name, skb->dev->ifindex);
+#endif
+
+#ifdef CONFIG_VLAN_8021Q_UNTAG
+	tag_remove = true;
+#else
+	return false;
+#endif
+	}
 
 	skb = *skbp = skb_share_check(skb, GFP_ATOMIC);
 	if (unlikely(!skb))
 		return false;
+
+#ifdef CONFIG_VLAN_8021Q_UNTAG
+	if (tag_remove == true) {
+		u16 vlan_tci = skb->vlan_tci;
+		rem_vlan_tag(skb);
+		u32 vid = vlan_id;
+		u32 vprio = (vlan_tci >> 13);
+#ifdef CONFIG_NETWORK_EXTMARK
+		SET_DATA_FROM_MARK_OPT(skb->extmark, VLANID_MASK, VLANID_START_BIT_POS, vid);
+		SET_DATA_FROM_MARK_OPT(skb->extmark, VPRIO_MASK, VPRIO_START_BIT_POS, vprio);
+#endif
+		skb->vlan_tci = 0;
+		return true;
+	}
+#endif
 
 	skb->dev = vlan_dev;
 	if (skb->pkt_type == PACKET_OTHERHOST) {
@@ -47,7 +133,10 @@ bool vlan_do_receive(struct sk_buff **skbp)
 		skb_reset_mac_len(skb);
 	}
 
-	skb->priority = vlan_get_ingress_priority(vlan_dev, skb->vlan_tci);
+#ifndef CONFIG_LANTIQ_IPQOS
+ 	skb->priority = vlan_get_ingress_priority(vlan_dev, skb->vlan_tci);
+#endif
+	/* should below line be moved inside the above macro check ? */
 	skb->vlan_tci = 0;
 
 	rx_stats = this_cpu_ptr(vlan_dev_priv(vlan_dev)->vlan_pcpu_stats);
@@ -58,6 +147,14 @@ bool vlan_do_receive(struct sk_buff **skbp)
 	if (skb->pkt_type == PACKET_MULTICAST)
 		rx_stats->rx_multicast++;
 	u64_stats_update_end(&rx_stats->syncp);
+
+#if defined(CONFIG_LTQ_ETH_OAM) || defined(CONFIG_LTQ_ETH_OAM_MODULE)
+	if (skb->protocol == 0x8902) {
+		 if(fp_ltq_eth_oam_dev != NULL) {
+			 skb->dev = fp_ltq_eth_oam_dev();
+		 }
+	}
+#endif 
 
 	return true;
 }

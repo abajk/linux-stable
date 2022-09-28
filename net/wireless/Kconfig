@@ -166,3 +166,17 @@ config LIB80211_DEBUG
 	  from lib80211.
 
 	  If unsure, say N.
+
+config STATIC_WLAN_MEMORY
+	bool "Reserve memory for WAVE WLAN driver"
+	default y
+	help
+	  Say Y here to enable reserve memory for WLAN to ensure WAVE module is always loaded to kseg0
+
+config STATIC_WLAN_MEMORY_SIZE
+	int "WAVE WLAN module allocation size (normal mode => 1, debug mode => 2)"
+	depends on STATIC_WLAN_MEMORY
+	range 1 2
+	default 1
+	help
+	  Specify WLAN memory allocation size - typically, no debug driver is ~1MB, debug driver is ~1.5MB

@@ -565,7 +565,11 @@ static int __init nf_conntrack_ftp_init(void)
 {
 	int i, j = -1, ret = 0;
 
+#ifdef CONFIG_LTQ_OPTIMIZATION
+	ftp_buffer = kmalloc(32768, GFP_KERNEL);
+#else
 	ftp_buffer = kmalloc(65536, GFP_KERNEL);
+#endif
 	if (!ftp_buffer)
 		return -ENOMEM;
 

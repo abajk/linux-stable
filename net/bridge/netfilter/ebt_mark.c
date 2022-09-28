@@ -18,7 +18,7 @@
 #include <linux/netfilter_bridge/ebtables.h>
 #include <linux/netfilter_bridge/ebt_mark_t.h>
 
-static unsigned int
+static unsigned int __ebt_optimized 
 ebt_mark_tg(struct sk_buff *skb, const struct xt_action_param *par)
 {
 	const struct ebt_mark_t_info *info = par->targinfo;

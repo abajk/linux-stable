@@ -341,6 +341,15 @@ static int nf_ct_expect_insert(struct nf_conntrack_expect *exp)
 	return 0;
 }
 
+#ifdef CONFIG_NF_CONNTRACK_RTSP 
+/* wrapper to put expectation for RTCP port */
+void nf_ct_expect_insert_rtcp(struct nf_conntrack_expect *exp)
+{
+          nf_ct_expect_insert(exp);
+          nf_ct_expect_event_report(IPEXP_NEW, exp, 0, 0);
+}
+#endif
+
 /* Race with expectations being used means we could have none to find; OK. */
 static void evict_oldest_expect(struct nf_conn *master,
 				struct nf_conntrack_expect *new)

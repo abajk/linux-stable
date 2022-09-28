@@ -17,6 +17,10 @@
 #include <net/route.h>
 #include <linux/ip.h>
 #include <net/ip.h>
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+#include <net/netfilter/nf_conntrack.h>
+#include <net/netfilter/nf_conntrack_session_limit.h>
+#endif
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Netfilter Core Team <coreteam@netfilter.org>");
@@ -91,6 +95,10 @@ iptable_mangle_hook(unsigned int hook,
 		return ipt_do_table(skb, hook, in, out,
 				    dev_net(out)->ipv4.iptable_mangle);
 	/* PREROUTING/INPUT/FORWARD: */
+#ifdef CONFIG_LTQ_HANDLE_CONNTRACK_SESSIONS
+	if (hook == NF_INET_PRE_ROUTING )
+		return(do_session_limit(hook,skb,in,out));
+#endif
 	return ipt_do_table(skb, hook, in, out,
 			    dev_net(in)->ipv4.iptable_mangle);
 }

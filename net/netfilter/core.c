@@ -26,6 +26,11 @@
 
 #include "nf_internals.h"
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+  #include <net/ppa_api.h>
+#endif
+
+
 static DEFINE_MUTEX(afinfo_mutex);
 
 const struct nf_afinfo __rcu *nf_afinfo[NFPROTO_NUMPROTO] __read_mostly;
@@ -187,7 +192,17 @@ next_hook:
 	if (verdict == NF_ACCEPT || verdict == NF_STOP) {
 		ret = 1;
 	} else if ((verdict & NF_VERDICT_MASK) == NF_DROP) {
-		kfree_skb(skb);
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        if ( ppa_hook_session_del_fn != NULL )
+        {
+            struct nf_conn *ct = NULL;
+            enum ip_conntrack_info ctinfo;
+        
+            ct = nf_ct_get(skb, &ctinfo);
+            ppa_hook_session_del_fn(ct, PPA_F_SESSION_ORG_DIR | PPA_F_SESSION_REPLY_DIR);
+        }
+#endif
+      kfree_skb(skb);
 		ret = NF_DROP_GETERR(verdict);
 		if (ret == 0)
 			ret = -EPERM;

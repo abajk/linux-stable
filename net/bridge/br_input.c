@@ -24,7 +24,7 @@
 br_should_route_hook_t __rcu *br_should_route_hook __read_mostly;
 EXPORT_SYMBOL(br_should_route_hook);
 
-static int br_pass_frame_up(struct sk_buff *skb)
+static int __ebt_optimized br_pass_frame_up(struct sk_buff *skb)
 {
 	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
 	struct net_bridge *br = netdev_priv(brdev);
@@ -57,7 +57,7 @@ static int br_pass_frame_up(struct sk_buff *skb)
 }
 
 /* note: already called with rcu_read_lock */
-int br_handle_frame_finish(struct sk_buff *skb)
+int __ebt_optimized br_handle_frame_finish(struct sk_buff *skb)
 {
 	const unsigned char *dest = eth_hdr(skb)->h_dest;
 	struct net_bridge_port *p = br_port_get_rcu(skb->dev);
@@ -158,7 +158,7 @@ static int br_handle_local_finish(struct sk_buff *skb)
  * Return NULL if skb is handled
  * note: already called with rcu_read_lock
  */
-rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
+rx_handler_result_t __ebt_optimized br_handle_frame(struct sk_buff **pskb)
 {
 	struct net_bridge_port *p;
 	struct sk_buff *skb = *pskb;
@@ -220,6 +220,7 @@ rx_handler_result_t br_handle_frame(struct sk_buff **pskb)
 
 forward:
 	switch (p->state) {
+#if 0
 	case BR_STATE_DISABLED:
 		if (ether_addr_equal(p->br->dev->dev_addr, dest))
 			skb->pkt_type = PACKET_HOST;
@@ -231,7 +232,7 @@ forward:
 		BR_INPUT_SKB_CB(skb)->brdev = p->br->dev;
 		br_pass_frame_up(skb);
 		break;
-
+#endif
 	case BR_STATE_FORWARDING:
 		rhook = rcu_dereference(br_should_route_hook);
 		if (rhook) {

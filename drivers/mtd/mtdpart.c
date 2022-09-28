@@ -617,7 +617,7 @@ out_register:
 }
 
 
-static int
+int
 __mtd_add_partition(struct mtd_info *master, char *name,
 		    long long offset, long long length, bool dup_check)
 {
@@ -707,7 +707,7 @@ int mtd_del_partition(struct mtd_info *master, int partno)
 }
 EXPORT_SYMBOL_GPL(mtd_del_partition);
 
-static inline unsigned long
+unsigned long
 mtd_pad_erasesize(struct mtd_info *mtd, int offset, int len)
 {
 	unsigned long mask = mtd->erasesize - 1;
@@ -726,6 +726,22 @@ struct squashfs_super_block {
 	__le64 bytes_used;
 };
 
+
+static unsigned long fix_size_for_bad_blocks(struct mtd_info *mtd,
+			unsigned long offset, unsigned long size)
+{
+	unsigned long offs = 0;
+
+	if (mtd->_block_isbad) {
+		while (offs < size) {
+			if (mtd->_block_isbad(mtd, offs + offset))
+				size += mtd->erasesize;
+			offs += mtd->erasesize;
+		}
+	}
+
+	return size;
+}
 
 static int split_squashfs(struct mtd_info *master, int offset, int *split_offset)
 {
@@ -754,10 +770,24 @@ static int split_squashfs(struct mtd_info *master, int offset, int *split_offset
 	}
 
 	len = (u32) le64_to_cpu(sb.bytes_used);
+	len = fix_size_for_bad_blocks(master, offset, len);
 	len = mtd_pad_erasesize(master, offset, len);
 	*split_offset = offset + len;
 
 	return 0;
+}
+
+static int detect_squashfs_partition(struct mtd_info *master, unsigned long offset)
+{
+	unsigned long temp;
+	size_t len;
+	int ret;
+
+	ret = mtd_read(master, offset, 4, &len, (void *)&temp);
+	if (ret || len != sizeof(temp))
+		return 0;
+
+	return le32_to_cpu(temp) == SQUASHFS_MAGIC;
 }
 
 static void split_rootfs_data(struct mtd_info *master, struct mtd_part *part)
@@ -791,16 +821,27 @@ static void split_uimage(struct mtd_info *master, struct mtd_part *part)
 		__be32 size;
 	} hdr;
 	size_t len;
+	unsigned long offs = 0;
 
-	if (mtd_read(master, part->offset, sizeof(hdr), &len, (void *) &hdr))
+	if (master->_block_isbad) {
+		while (master->_block_isbad(master, part->offset + offs)) {
+			offs += master->erasesize;
+		}
+	}
+
+	if (mtd_read(master, part->offset + offs, sizeof(hdr), &len, (void *) &hdr))
 		return;
 
 	if (len != sizeof(hdr) || hdr.magic != cpu_to_be32(UBOOT_MAGIC))
 		return;
 
 	len = be32_to_cpu(hdr.size) + 0x40;
-	len = mtd_pad_erasesize(master, part->offset, len);
-	if (len + master->erasesize > part->mtd.size)
+	len = fix_size_for_bad_blocks(master, part->offset, len);
+	if (!detect_squashfs_partition(master,
+				       part->offset + len))
+		len = mtd_pad_erasesize(master, part->offset, len);
+
+	if (len > part->mtd.size)
 		return;
 
 	__mtd_add_partition(master, "rootfs", part->offset + len,

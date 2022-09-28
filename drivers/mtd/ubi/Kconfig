@@ -87,4 +87,14 @@ config MTD_UBI_GLUEBI
 	   work on top of UBI. Do not enable this unless you use legacy
 	   software.
 
+config MTD_UBI_GLUEBI_ROOTFS_DEV
+	bool "Set root filesystem based on rootfs volume name"
+	depends on MTD_UBI_GLUEBI
+	default y
+	help
+	   This option helps kernel to mount a root filesystem which works on top
+	   of a gluebi volume using its volume name instead of using its mtd number.
+	   ie. instead of using root=/dev/mtdblockN, we can pass
+	   'rootfsname=volume_name' via kernel commandline.
+
 endif # MTD_UBI

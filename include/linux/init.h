@@ -39,8 +39,24 @@
  * Also note, that this data cannot be "const".
  */
 
+#ifdef CONFIG_LTQ_IPQOS_EBT_OPT
+#define __ebt_optimized __section(ebt_optimized)
+#else 
+#define __ebt_optimized
+#endif
+
+#ifdef CONFIG_LTQ_IPQOS_IPT_NF_OPT
+#define __ipt_optimized __section(ipt_optimized)
+#else 
+#define __ipt_optimized
+#endif
+
 /* These are for everybody (although not all archs will actually
    discard it in modules) */
+
+#ifdef CONFIG_LTQ_SYS_OPT
+#define __system       __section(system)
+#endif
 #define __init		__section(.init.text) __cold notrace
 #define __initdata	__section(.init.data)
 #define __initconst	__constsection(.init.rodata)

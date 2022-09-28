@@ -1455,7 +1455,11 @@ void __noreturn nmi_exception_handler(struct pt_regs *regs)
 	die("NMI", regs);
 }
 
+#ifdef CONFIG_SOC_XWAY
+#define VECTORSPACING 0x200     /* for EI/VI mode */
+#else
 #define VECTORSPACING 0x100	/* for EI/VI mode */
+#endif
 
 unsigned long ebase;
 unsigned long exception_handlers[32];

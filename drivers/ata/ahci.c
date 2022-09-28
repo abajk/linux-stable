@@ -537,13 +537,13 @@ static void ahci_pci_init_controller(struct ata_host *host)
 			mv = 4;
 		port_mmio = __ahci_port_base(host, mv);
 
-		writel(0, port_mmio + PORT_IRQ_MASK);
+		ahci_writel(0, port_mmio + PORT_IRQ_MASK);
 
 		/* clear port IRQ */
-		tmp = readl(port_mmio + PORT_IRQ_STAT);
+		tmp = ahci_readl(port_mmio + PORT_IRQ_STAT);
 		VPRINTK("PORT_IRQ_STAT 0x%x\n", tmp);
 		if (tmp)
-			writel(tmp, port_mmio + PORT_IRQ_STAT);
+			ahci_writel(tmp, port_mmio + PORT_IRQ_STAT);
 	}
 
 	ahci_init_controller(host);
@@ -637,10 +637,10 @@ static int ahci_pci_device_suspend(struct pci_dev *pdev, pm_message_t mesg)
 		 * Software must disable interrupts prior to requesting a
 		 * transition of the HBA to D3 state.
 		 */
-		ctl = readl(mmio + HOST_CTL);
+		ctl = ahci_readl(mmio + HOST_CTL);
 		ctl &= ~HOST_IRQ_EN;
-		writel(ctl, mmio + HOST_CTL);
-		readl(mmio + HOST_CTL); /* flush */
+		ahci_writel(ctl, mmio + HOST_CTL);
+		ahci_readl(mmio + HOST_CTL); /* flush */
 	}
 
 	return ata_pci_device_suspend(pdev, mesg);

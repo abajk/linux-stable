@@ -79,6 +79,10 @@
 #include <linux/mroute.h>
 #include <linux/netlink.h>
 #include <linux/tcp.h>
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+  #include <net/ppa_api.h>
+#endif
+
 
 int sysctl_ip_default_ttl __read_mostly = IPDEFTTL;
 EXPORT_SYMBOL(sysctl_ip_default_ttl);
@@ -192,6 +196,37 @@ static inline int ip_finish_output2(struct sk_buff *skb)
 		skb = skb2;
 	}
 
+#if defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE)
+        if ( ppa_hook_session_add_fn != NULL )
+        {
+#if defined(CONFIG_LANTIQ_IPQOS_CLASS_ACCELERATION_DISABLE)
+	   /* check for 13th bit in NFMARK set by IPQOS classifier */
+          /* If this bit is set, dont call PPA session add fn*/
+          bool accel_st;
+#ifdef CONFIG_NETWORK_EXTMARK
+          GET_DATA_FROM_MARK_OPT(skb->extmark, ACCELSEL_MASK, ACCELSEL_START_BIT_POS, accel_st);
+#endif
+          if (accel_st == 0) {
+#endif
+
+            struct nf_conn *ct;
+
+            enum ip_conntrack_info ctinfo;
+            uint32_t flags;
+    
+            ct = nf_ct_get(skb, &ctinfo);
+    
+            flags = 0;  //  post routing
+            flags |= CTINFO2DIR(ctinfo) == IP_CT_DIR_ORIGINAL ? PPA_F_SESSION_ORG_DIR : PPA_F_SESSION_REPLY_DIR;
+    
+            ppa_hook_session_add_fn(skb, ct, flags);
+#if defined(CONFIG_LANTIQ_IPQOS_CLASS_ACCELERATION_DISABLE)
+	   }
+#endif
+
+        }
+#endif
+
 	rcu_read_lock_bh();
 	nexthop = (__force u32) rt_nexthop(rt, ip_hdr(skb)->daddr);
 	neigh = __ipv4_neigh_lookup_noref(dev, nexthop);
@@ -219,7 +254,7 @@ static inline int ip_skb_dst_mtu(struct sk_buff *skb)
 	       skb_dst(skb)->dev->mtu : dst_mtu(skb_dst(skb));
 }
 
-static int ip_finish_output(struct sk_buff *skb)
+static int __ipt_optimized ip_finish_output(struct sk_buff *skb)
 {
 #if defined(CONFIG_NETFILTER) && defined(CONFIG_XFRM)
 	/* Policy lookup after SNAT yielded a new policy */
@@ -231,10 +266,15 @@ static int ip_finish_output(struct sk_buff *skb)
 	if (skb->len > ip_skb_dst_mtu(skb) && !skb_is_gso(skb))
 		return ip_fragment(skb, ip_finish_output2);
 	else
+	{
+#ifdef CONFIG_LANTIQ_IPQOS_MARK_SKBPRIO
+		skb_mark_priority(skb);
+#endif
 		return ip_finish_output2(skb);
+	}
 }
 
-int ip_mc_output(struct sk_buff *skb)
+int __ipt_optimized ip_mc_output(struct sk_buff *skb)
 {
 	struct sock *sk = skb->sk;
 	struct rtable *rt = skb_rtable(skb);
@@ -295,7 +335,7 @@ int ip_mc_output(struct sk_buff *skb)
 			    !(IPCB(skb)->flags & IPSKB_REROUTED));
 }
 
-int ip_output(struct sk_buff *skb)
+int __ipt_optimized ip_output(struct sk_buff *skb)
 {
 	struct net_device *dev = skb_dst(skb)->dev;
 

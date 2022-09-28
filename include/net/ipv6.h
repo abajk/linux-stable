@@ -46,6 +46,12 @@
 #define NEXTHDR_MAX		255
 
 
+#if (defined(CONFIG_LTQ_PPA_API) || defined(CONFIG_LTQ_PPA_API_MODULE))
+static inline void ipv6_addr_copy(struct in6_addr *a1, const struct in6_addr *a2)
+{
+   memcpy(a1, a2, sizeof(struct in6_addr));
+}
+#endif
 
 #define IPV6_DEFAULT_HOPLIMIT   64
 #define IPV6_DEFAULT_MCASTHOPS	1
